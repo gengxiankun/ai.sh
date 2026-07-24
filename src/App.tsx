@@ -29,6 +29,7 @@ import type {
   UpdateEntry,
   ChatStep,
   Skill,
+  PendingFile,
 } from './types'
 import './App.css'
 
@@ -150,6 +151,9 @@ export default function App() {
 
   // 模型信息（从 Edge Function 获取）
   const [modelInfo, setModelInfo] = useState<{ provider: string; model: string } | null>(null)
+
+  // 待上传文件
+  const [pendingFile, setPendingFile] = useState<PendingFile | null>(null)
 
   skillsRef.current = skills
   skillModalRef.current = skillModal
@@ -742,20 +746,32 @@ export default function App() {
 
   // ==================== AI 聊天提交 ====================
   const submitChat = async (query: string) => {
+    const currentFile = pendingFile
     setInput('')
     setSuggestion('')
     setHistoryIdx(-1)
+    setPendingFile(null)
 
-    chatHistoryRef.current.push({ role: 'user', content: query })
+    let fullContent = query
+    if (currentFile) {
+      fullContent = `[文件: ${currentFile.name}]\n\n${currentFile.content}\n\n---\n用户: ${query}`
+    }
+
+    chatHistoryRef.current.push({ role: 'user', content: fullContent })
     const u = userRef.current
     if (u) {
       getSupabase()
         ?.from('chat_messages')
-        .insert({ user_id: u.id, role: 'user', content: query })
+        .insert({ user_id: u.id, role: 'user', content: fullContent })
         .then()
     }
 
-    const userLine: Line = { input: query, output: '', status: 'loading' }
+    const userLine: Line = {
+      input: query,
+      output: '',
+      status: 'loading',
+      file: currentFile ? { name: currentFile.name, type: currentFile.type } : undefined,
+    }
     const aiLine: Line = { input: '', output: '', status: undefined }
     setHistory((prev) => [...prev, userLine, aiLine])
 
@@ -883,6 +899,10 @@ export default function App() {
     }
   }
 
+  // ref — 保持键盘事件中能读到最新的 submitChat（含 pendingFile）
+  const submitChatRef = useRef(submitChat)
+  submitChatRef.current = submitChat
+
   // ==================== Enter 键处理 ====================
   const handleEnter = () => {
     const cmds = dropdownRef.current
@@ -985,7 +1005,7 @@ export default function App() {
     // AI 聊天
     if (!currentInput.startsWith('/')) {
       if (!currentInput.trim()) return
-      submitChat(currentInput)
+      submitChatRef.current(currentInput)
       return
     }
 
@@ -1189,6 +1209,7 @@ export default function App() {
           isAdmin={isAdmin}
           skills={skills}
           modelInfo={modelInfo}
+          pendingFile={pendingFile}
           textareaRef={textareaRef}
           bottomRef={bottomRef}
           onInputChange={(v) => {
@@ -1211,6 +1232,8 @@ export default function App() {
             setInput('我想注册或登录账号')
             setHistoryIdx(-1)
           }}
+          onFileSelect={setPendingFile}
+          onFileRemove={() => setPendingFile(null)}
         />
       ) : (
         <Welcome
@@ -1226,6 +1249,7 @@ export default function App() {
           isAdmin={isAdmin}
           skills={skills}
           modelInfo={modelInfo}
+          pendingFile={pendingFile}
           textareaRef={textareaRef}
           onInputChange={(v) => {
             setInput(v)
@@ -1247,6 +1271,8 @@ export default function App() {
             setHistoryIdx(-1)
           }}
           onOpenUpdateLog={() => setUpdateLogModal(true)}
+          onFileSelect={setPendingFile}
+          onFileRemove={() => setPendingFile(null)}
         />
       )}
 

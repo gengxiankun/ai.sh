@@ -35,8 +35,49 @@ Deno.serve(async (req: Request) => {
     tools?: unknown[]
     stream?: boolean
     embedding?: boolean
+    parse_pdf?: boolean
+    pdf_data?: string
     scrape?: boolean
     url?: string
+  }
+
+  // ==================== PDF 文本提取 ====================
+  if (body.parse_pdf && body.pdf_data) {
+    try {
+      const binary = Uint8Array.from(atob(body.pdf_data), (c) => c.charCodeAt(0))
+      const text = new TextDecoder("latin1").decode(binary)
+      const result: string[] = []
+
+      const btRegex = /BT([\s\S]*?)ET/g
+      let match: RegExpExecArray | null
+      while ((match = btRegex.exec(text)) !== null) {
+        const block = match[1]
+        let out = ""
+        const tjRegex = /\(([^)]*)\)\s*Tj/g
+        let tm: RegExpExecArray | null
+        while ((tm = tjRegex.exec(block)) !== null) {
+          out += tm[1]
+        }
+        // TJ array
+        const tjArrRegex = /\[([^\]]*)\]\s*TJ/g
+        let ta: RegExpExecArray | null
+        while ((ta = tjArrRegex.exec(block)) !== null) {
+          const parts = ta[1].match(/\(([^)]*)\)/g)
+          if (parts) out += parts.map((p) => p.slice(1, -1)).join("")
+        }
+        if (out.trim()) result.push(out)
+      }
+
+      return new Response(result.join("\n") || "[No text extracted from PDF]", {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
+      })
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: "PDF parse error", detail: String(e) }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
   }
 
   // ==================== Scrape 代理 ====================

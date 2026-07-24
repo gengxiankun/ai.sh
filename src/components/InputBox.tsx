@@ -1,5 +1,4 @@
 // 输入框组件 — textarea（正常模式）/ 密码显示（密码模式）
-// 从 App.tsx 抽出两处重复的输入渲染
 
 import { type FC, type RefObject } from 'react'
 
@@ -21,7 +20,6 @@ export const InputBox: FC<Props> = ({
   return (
     <div className="flex items-start gap-3 px-3 pt-3 pb-1 text-sm max-h-[24rem] overflow-y-auto">
       {passwordMode ? (
-        // 密码模式 — 显示圆点掩码
         <span
           style={{ color: 'var(--ui-text)' }}
           className="flex-1 inline-block min-h-[1.2em]"
@@ -29,7 +27,6 @@ export const InputBox: FC<Props> = ({
           {input || '\u00A0'}
         </span>
       ) : (
-        // 正常模式 — 可编辑 textarea
         <textarea
           ref={textareaRef}
           value={input}

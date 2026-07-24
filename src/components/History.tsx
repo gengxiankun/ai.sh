@@ -40,6 +40,21 @@ export const History: FC<Props> = ({ history, isAdmin, onActionClick }) => {
               </div>
             )}
 
+            {/* 文件附件 */}
+            {line.file && (
+              <div className="mb-1.5">
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded"
+                  style={{
+                    background: 'rgba(99,102,241,0.1)',
+                    color: '#818cf8',
+                  }}
+                >
+                  {line.file.name}
+                </span>
+              </div>
+            )}
+
             {/* AI Steps — Agent tool calling 进度 */}
             {line.steps && line.steps.length > 0 && (
               <div className="flex flex-col gap-1 mt-1.5">

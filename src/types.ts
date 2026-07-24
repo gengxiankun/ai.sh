@@ -33,10 +33,18 @@ export type Line = {
   status?: 'loading' | 'done'
   isAI?: boolean
   steps?: ChatStep[]
+  file?: { name: string; type: string }
 }
 
 // 命令返回值
 export type CommandResult = string | { output: string; actions: Action[] }
+
+// 待发送文件
+export type PendingFile = {
+  name: string
+  type: 'md' | 'pdf'
+  content: string
+}
 
 // site-data 数据类型
 export type SiteProject = {
