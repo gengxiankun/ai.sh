@@ -22,6 +22,7 @@ type Props = {
   user: User | null
   isAdmin: boolean
   skills: Skill[]
+  modelInfo: { provider: string; model: string } | null
   textareaRef: RefObject<HTMLTextAreaElement | null>
   bottomRef: RefObject<HTMLDivElement | null>
   onInputChange: (v: string) => void
@@ -44,6 +45,7 @@ export const Terminal: FC<Props> = ({
   user,
   isAdmin,
   skills,
+  modelInfo,
   textareaRef,
   bottomRef,
   onInputChange,
@@ -103,7 +105,9 @@ export const Terminal: FC<Props> = ({
                 color: 'var(--ui-text-secondary)',
               }}
             >
-              Powered by {import.meta.env.VITE_LLM_MODEL ?? 'deepseek-v4-flash'}
+              {modelInfo?.provider
+              ? `${modelInfo.provider} · ${modelInfo.model}`
+              : modelInfo?.model ?? ''}
             </div>
           </div>
         </div>

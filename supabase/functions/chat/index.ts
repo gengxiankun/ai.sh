@@ -18,8 +18,17 @@ Deno.serve(async (req: Request) => {
   const LLM_API_KEY   = Deno.env.get("LLM_API_KEY") ?? DEEPSEEK_API_KEY
   const LLM_BASE_URL  = Deno.env.get("LLM_BASE_URL") ?? "https://api.deepseek.com/v1"
   const LLM_MODEL     = Deno.env.get("LLM_MODEL") ?? "deepseek-v4-flash"
+  const LLM_PROVIDER  = Deno.env.get("LLM_PROVIDER") ?? ""
   const LLM_MAX_TOKENS = parseInt(Deno.env.get("LLM_MAX_TOKENS") ?? "500")
   const JINA_API_KEY = Deno.env.get("JINA_API_KEY")!
+
+  // ==================== GET: 返回模型信息 ====================
+  if (req.method === "GET") {
+    return new Response(JSON.stringify({ provider: LLM_PROVIDER, model: LLM_MODEL }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+  }
 
   const body = await req.json() as {
     messages?: unknown[]

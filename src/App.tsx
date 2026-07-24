@@ -148,6 +148,9 @@ export default function App() {
   const updateLogModalRef = useRef(false)
   updateLogModalRef.current = updateLogModal
 
+  // 模型信息（从 Edge Function 获取）
+  const [modelInfo, setModelInfo] = useState<{ provider: string; model: string } | null>(null)
+
   skillsRef.current = skills
   skillModalRef.current = skillModal
 
@@ -242,6 +245,18 @@ export default function App() {
     fetch(`${import.meta.env.BASE_URL}updates.json`)
       .then((r) => r.json())
       .then(setUpdates)
+      .catch(() => {})
+  }, [])
+
+  // 从 Edge Function 获取模型信息
+  useEffect(() => {
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${key}` },
+    })
+      .then((r) => r.json())
+      .then(setModelInfo)
       .catch(() => {})
   }, [])
 
@@ -1173,6 +1188,7 @@ export default function App() {
           user={user}
           isAdmin={isAdmin}
           skills={skills}
+          modelInfo={modelInfo}
           textareaRef={textareaRef}
           bottomRef={bottomRef}
           onInputChange={(v) => {
@@ -1209,6 +1225,7 @@ export default function App() {
           user={user}
           isAdmin={isAdmin}
           skills={skills}
+          modelInfo={modelInfo}
           textareaRef={textareaRef}
           onInputChange={(v) => {
             setInput(v)

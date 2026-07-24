@@ -1,69 +1,43 @@
-import * as readline from "node:readline"
+import * as p from "@clack/prompts"
 import { writeFileSync, readFileSync, existsSync } from "node:fs"
 import { execSync } from "node:child_process"
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-})
-
-function ask(q: string): Promise<string> {
-  return new Promise((r) => rl.question(q, (a) => r(a.trim())))
-}
 
 function supabase(args: string): string {
   return execSync(`npx supabase ${args}`, {
     encoding: "utf-8",
-    stdio: ["inherit", "pipe", "inherit"],
-    timeout: 120000,
-  })
-}
-
-function supabaseInteractive(args: string): void {
-  execSync(`npx supabase ${args}`, {
-    stdio: "inherit",
+    stdio: ["inherit", "pipe", "pipe"],
     timeout: 120000,
   })
 }
 
 function supabaseJSON(args: string): unknown {
   const out = supabase(`${args} --output-format json`)
-  // 过滤掉 spinner 输出的 ANSI 转义序列，只提取 JSON 部分
   const json = out.replace(/[\u001b\u009b][[()#;?]*[A-Za-z]/g, "").trim()
   const match = json.match(/\{[\s\S]*\}/)
   if (!match) throw new Error(`Failed to parse JSON from supabase ${args}`)
   return JSON.parse(match[0])
 }
 
-async function select<T>(
-  items: T[],
-  label: (t: T, i: number) => string,
-  extra: { label: string; value: string }[] = [],
-): Promise<string> {
-  console.log()
-  items.forEach((t, i) => console.log(`  [${i + 1}] ${label(t, i)}`))
-  extra.forEach((e, i) => console.log(`  [${items.length + i + 1}] ${e.label}`))
-
-  const max = items.length + extra.length
-  while (true) {
-    const choice = await ask(`\n选择 (1-${max}): `)
-    const n = Number(choice)
-    if (n >= 1 && n <= items.length) return label(items[n - 1], n - 1)
-    if (n > items.length && n <= max)
-      return extra[n - items.length - 1].value
-    console.log("无效选择，请重新输入")
-  }
-}
-
 async function main() {
-  console.log("\n🔧 Terminal Site — 项目初始化\n")
+  p.intro("ai.sh — 项目初始化")
 
   // ==================== Step 1: 登录 ====================
-  console.log("登录 Supabase...")
+  const s = p.spinner()
+  let loggedIn = false
   try {
-    supabaseInteractive("login")
+    supabaseJSON("orgs list")
+    loggedIn = true
   } catch {
-    console.log("⚠️  登录失败或已登录，继续...")
+    // 未登录，需要 login
+  }
+
+  if (!loggedIn) {
+    s.start("登录 Supabase（浏览器将自动打开）...")
+    execSync("npx supabase login", { stdio: "inherit", timeout: 120000 })
+    s.stop("登录完成")
+  } else {
+    s.start("已登录，跳过")
+    s.stop("已登录")
   }
 
   // ==================== Step 2: 获取组织 ====================
@@ -74,29 +48,28 @@ async function main() {
     }
     const list = orgs?.organizations ?? []
     if (list.length === 0) {
-      console.log("未找到组织。请先在 Supabase Dashboard 创建组织。")
-      console.log("https://supabase.com/dashboard/org/_/general")
+      p.cancel("未找到组织。请先在 Supabase Dashboard 创建组织。")
       process.exit(1)
     }
     if (list.length === 1) {
       orgId = list[0].id
-      console.log(`组织: ${list[0].name} (自动选择)`)
+      p.note(`组织: ${list[0].name}`, "自动选择")
     } else {
-      const label = await select(
-        list,
-        (o) => `${o.name} (${o.id})`,
-      )
-      orgId = label.match(/\(([^)]+)\)$/)?.[1] ?? list[0].id
+      const choice = await p.select({
+        message: "选择组织",
+        options: list.map((o) => ({ value: o.id, label: o.name })),
+      })
+      if (p.isCancel(choice)) process.exit(0)
+      orgId = choice as string
     }
   } catch {
-    console.log("⚠️  获取组织列表失败")
+    p.cancel("获取组织列表失败")
     process.exit(1)
   }
 
   // ==================== Step 3 & 4: 获取项目 + 选择/创建 ====================
   let projectRef = ""
   let dbPassword = ""
-
 
   const projects =
     (
@@ -105,92 +78,100 @@ async function main() {
       }
     )?.projects ?? []
 
-  const label = await select(
-    projects,
-    (p) => `${p.name}  (${p.ref})  [${p.region}]`,
-    [{ label: "+ 创建新项目", value: "__create__" }],
-  )
+  const projChoice = await p.select({
+    message: "选择 Supabase 项目",
+    options: [
+      ...projects.map((pr) => ({
+        value: pr.ref,
+        label: pr.name,
+        hint: `${pr.ref} · ${pr.region}`,
+      })),
+      { value: "__create__", label: "+ 创建新项目" },
+    ],
+  })
+  if (p.isCancel(projChoice)) process.exit(0)
 
-  if (label === "__create__") {
-    // ==================== Step 5b: 创建新项目 ====================
-    const name = await ask("\n项目名称: ")
+  if (projChoice === "__create__") {
+    const name = await p.text({ message: "项目名称" })
+    if (p.isCancel(name)) process.exit(0)
     if (!name) {
-      console.log("❌ 项目名称不能为空")
+      p.cancel("项目名称不能为空")
       process.exit(1)
     }
 
-    const regions = [
-      { id: "ap-northeast-1", label: "东京 (Northeast Asia)" },
-      { id: "ap-southeast-1", label: "新加坡 (Southeast Asia)" },
-      { id: "us-west-1", label: "美西 (West US)" },
-      { id: "us-east-1", label: "美东 (East US)" },
-      { id: "eu-west-1", label: "爱尔兰 (West EU)" },
-      { id: "eu-central-1", label: "法兰克福 (Central EU)" },
-      { id: "ap-south-1", label: "孟买 (South Asia)" },
-      { id: "ap-southeast-2", label: "悉尼 (Australia)" },
-      { id: "ap-northeast-2", label: "首尔 (Northeast Asia 2)" },
-      { id: "sa-east-1", label: "圣保罗 (South America)" },
-      { id: "ca-central-1", label: "加拿大 (Canada)" },
-    ]
+    const region = await p.select({
+      message: "选择区域（推荐东京）",
+      options: [
+        { value: "ap-northeast-1", label: "东京 (Northeast Asia)", hint: "推荐 · 国内延迟最低" },
+        { value: "ap-southeast-1", label: "新加坡 (Southeast Asia)" },
+        { value: "us-west-1", label: "美西 (West US)" },
+        { value: "ap-northeast-2", label: "首尔 (Northeast Asia 2)" },
+        { value: "eu-central-1", label: "法兰克福 (Central EU)" },
+      ],
+    })
+    if (p.isCancel(region)) process.exit(0)
 
-    console.log("\n可用区域（推荐东京，国内延迟最低）:")
-    regions.forEach((r, i) => console.log(`  [${i + 1}] ${r.label} (${r.id})`))
-    const regionChoice = await ask(`\n选择区域 (1-${regions.length}, 默认 1): `)
-    const region =
-      regions[Math.max(0, (Number(regionChoice) || 1) - 1)]?.id ??
-      "ap-northeast-1"
-
-    dbPassword = await ask("数据库密码 (至少 8 位): ")
+    dbPassword = (await p.password({ message: "数据库密码（至少 8 位）" })) as string
+    if (p.isCancel(dbPassword)) process.exit(0)
     if (!dbPassword || dbPassword.length < 8) {
-      console.log("❌ 密码至少 8 位")
+      p.cancel("密码至少 8 位")
       process.exit(1)
     }
 
-    console.log(`\n正在创建项目 "${name}"... (可能需要 1-2 分钟)`)
+    const cs = p.spinner()
+    cs.start(`正在创建项目 "${name}"... (约 1 分钟)`)
     try {
-      supabaseInteractive(
-        `projects create "${name}" --org-id ${orgId} --db-password "${dbPassword}" --region ${region}`,
+      execSync(
+        `npx supabase projects create "${name}" --org-id ${orgId} --db-password "${dbPassword}" --region ${region}`,
+        { stdio: "inherit", timeout: 180000 },
       )
-
-      // 创建后重新获取项目列表，找到刚创建的项目
       const afterCreate = supabaseJSON("projects list") as {
         projects?: { ref: string; name: string }[]
       }
       const created = afterCreate?.projects?.find((p) => p.name === name)
       projectRef = created?.ref ?? ""
       if (!projectRef) throw new Error("无法获取项目 ref")
-      console.log(`✅ 项目已创建: ${name} (${projectRef})`)
+      cs.stop(`项目已创建: ${name} (${projectRef})`)
     } catch (e) {
-      console.log(`❌ 创建失败: ${e}`)
-      console.log("你可以手动在 Supabase Dashboard 创建后重新运行 setup。")
+      cs.stop("创建失败")
+      p.cancel(`创建失败: ${e}`)
       process.exit(1)
     }
   } else {
-    // 已选择已有项目 (label 格式: "name  (ref)  [region]")
-    projectRef = label.match(/\(([a-z0-9]{20,})\)/)?.[1] ?? ""
-    dbPassword = await ask("数据库密码 (回车跳过，跳过将不执行迁移): ")
+    projectRef = projChoice as string
+    dbPassword = (await p.password({
+      message: "数据库密码（回车跳过，跳过将不执行迁移）",
+    })) as string
+    if (p.isCancel(dbPassword)) process.exit(0)
   }
 
   if (!projectRef) {
-    console.log("❌ 获取项目 ref 失败")
+    p.cancel("获取项目 ref 失败")
     process.exit(1)
   }
 
-  // ==================== Step 5a/5b: link 项目 ====================
+  // ==================== Step 5: link 项目 ====================
+  const ls = p.spinner()
+  ls.start("链接项目...")
   try {
     const linkArgs = dbPassword
       ? `link --project-ref ${projectRef} --password "${dbPassword}"`
       : `link --project-ref ${projectRef}`
     supabase(linkArgs)
+    ls.stop("项目已链接")
   } catch {
-    console.log("⚠️  link 失败（可能已链接），跳过...")
+    ls.stop("link 失败（可能已链接），跳过")
   }
 
-  // ==================== Step 5b2: 管理员邮箱 ====================
-  console.log("\n--- 管理员配置 ---")
-  const adminEmail = await ask("管理员邮箱 (你的 Supabase 登录邮箱): ")
-  if (!adminEmail || !adminEmail.includes("@")) {
-    console.log("⚠️  邮箱格式无效，请重新输入")
+  // ==================== Step 6: 管理员邮箱 ====================
+  const adminEmail = await p.text({
+    message: "管理员邮箱",
+    placeholder: "your@email.com",
+    validate: (v) => (!v?.includes("@") ? "请输入有效邮箱" : undefined),
+  })
+  if (p.isCancel(adminEmail)) process.exit(0)
+  if (!adminEmail) {
+    p.cancel("邮箱不能为空")
     process.exit(1)
   }
 
@@ -201,28 +182,25 @@ async function main() {
     let sql = readFileSync(sqlTemplate, "utf-8")
     sql = sql.replace(/'ADMIN_EMAIL'/g, `'${adminEmail}'`)
     writeFileSync(sqlPath, sql)
-    console.log(`✅ 迁移 SQL 管理员邮箱已更新为: ${adminEmail}`)
   } catch {
-    console.log("⚠️  迁移 SQL 生成失败，请手动替换 ADMIN_EMAIL")
+    p.note("迁移 SQL 生成失败，请手动替换 ADMIN_EMAIL", "警告")
   }
 
-  // ==================== Step 5c: 执行数据库迁移 ====================
+  // ==================== Step 7: 执行数据库迁移 ====================
   if (dbPassword) {
-    console.log("\n正在执行数据库迁移...")
+    const ms = p.spinner()
+    ms.start("执行数据库迁移...")
     try {
       supabase(`db push --yes --password "${dbPassword}"`)
-      console.log("✅ 数据库迁移完成")
+      ms.stop("数据库迁移完成")
     } catch {
-      console.log("⚠️  迁移执行失败，请稍后手动执行:")
-      console.log("     npx supabase db push --yes")
+      ms.stop("迁移执行失败，请稍后手动执行:\n  npx supabase db push --yes")
     }
   } else {
-    console.log("\n⚠️  未提供数据库密码，跳过迁移。稍后手动执行:")
-    console.log("     npx supabase db push --yes")
+    p.note("未提供数据库密码，跳过迁移。稍后手动执行:\n  npx supabase db push --yes", "提示")
   }
 
-  // ==================== Step 6: 获取 publishable key ====================
-  console.log("\n正在获取 API Keys...")
+  // ==================== Step 8: 获取 publishable key ====================
   let anonKey = ""
   try {
     const keys =
@@ -240,14 +218,17 @@ async function main() {
   }
 
   if (!anonKey) {
-    console.log("⚠️  自动获取 Key 失败")
-    anonKey = await ask("请手动输入 Supabase Anon Key (publishable): ")
+    anonKey = (await p.text({
+      message: "Supabase Anon Key (publishable key)",
+      placeholder: "sb_publishable_...",
+    })) as string
+    if (p.isCancel(anonKey)) process.exit(0)
   }
 
   const supabaseUrl = `https://${projectRef}.supabase.co`
 
-  // ==================== Step 7: 对话模型配置 ====================
-  console.log("\n--- 对话模型配置 ---")
+  // ==================== Step 9: 对话模型配置 ====================
+  p.note("对话模型配置", "Step 1/2")
 
   const providers: Record<string, { name: string; baseUrl: string; models: string[] }> = {
     deepseek: { name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"] },
@@ -256,76 +237,91 @@ async function main() {
     qwen:     { name: "通义千问 (Qwen)",    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-turbo", "qwen-plus", "qwen-max"] },
   }
 
-  const providerKeys = Object.keys(providers)
-  const providerLabel = await select(
-    providerKeys.map((k) => ({ key: k, ...providers[k] })),
-    (p) => p.name,
-    [{ label: "自定义", value: "custom" }],
-  )
+  const providerKey = await p.select({
+    message: "选择 LLM 提供商",
+    options: [
+      ...Object.entries(providers).map(([key, info]) => ({
+        value: key,
+        label: info.name,
+      })),
+      { value: "custom", label: "自定义" },
+    ],
+  })
+  if (p.isCancel(providerKey)) process.exit(0)
 
   let llmBaseUrl = ""
   let llmModel = ""
+  let llmProvider = ""
 
-  if (providerLabel === "custom") {
-    llmBaseUrl = await ask("Base URL (e.g. https://api.openai.com/v1): ")
-    llmModel = await ask("Model (e.g. gpt-4o): ")
+  if (providerKey === "custom") {
+    llmBaseUrl = (await p.text({
+      message: "Base URL",
+      placeholder: "https://api.openai.com/v1",
+    })) as string
+    if (p.isCancel(llmBaseUrl)) process.exit(0)
+    llmModel = (await p.text({
+      message: "Model",
+      placeholder: "gpt-4o",
+    })) as string
+    if (p.isCancel(llmModel)) process.exit(0)
     if (!llmBaseUrl || !llmModel) {
-      console.log("⚠️  URL 和 Model 不能为空")
+      p.cancel("URL 和 Model 不能为空")
       process.exit(1)
     }
+    llmProvider = (await p.text({
+      message: "Provider display name（如 OpenAI，回车跳过）",
+      placeholder: "OpenAI",
+    })) as string
   } else {
-    const p = providers[providerLabel.toLowerCase()] ?? Object.values(providers).find((vv) => vv.name === providerLabel)
-    if (!p) process.exit(1)
-    llmBaseUrl = p.baseUrl
+    const info = providers[providerKey as string]
+    if (!info) process.exit(1)
+    llmBaseUrl = info.baseUrl
+    llmProvider = info.name
 
-    const modelLabel = await select(
-      p.models,
-      (m) => m,
-    )
-    llmModel = modelLabel.replace(/\s*\(推荐\)\s*$/, "")
-    console.log(`模型: ${llmModel}`)
+    const modelChoice = await p.select({
+      message: `选择 ${info.name} 模型`,
+      options: info.models.map((m) => ({ value: m, label: m })),
+    })
+    if (p.isCancel(modelChoice)) process.exit(0)
+    llmModel = modelChoice as string
   }
 
-  const llmApiKey = await ask("\nLLM API Key: ")
+  const llmApiKey = await p.password({ message: `${llmProvider || "LLM"} API Key` })
+  if (p.isCancel(llmApiKey)) process.exit(0)
   if (!llmApiKey) {
-    console.log("⚠️  API Key 不能为空")
+    p.cancel("API Key 不能为空")
     process.exit(1)
   }
 
-  // ==================== Step 8: 向量模型配置 ====================
-  console.log("\n--- 向量模型配置 ---")
-  console.log("Embedding: Jina (jina-embeddings-v3)")
-  const jinaKey = await ask("Jina API Key: ")
+  // ==================== Step 10: 向量模型配置 ====================
+  p.note("向量模型配置", "Step 2/2")
+  const jinaKey = await p.password({ message: "Jina API Key" })
+  if (p.isCancel(jinaKey)) process.exit(0)
   if (!jinaKey) {
-    console.log("⚠️  API Key 不能为空")
+    p.cancel("API Key 不能为空")
     process.exit(1)
   }
 
-  // ==================== Step 9: 写入 .env ====================
+  // ==================== Step 11: 写入 .env ====================
   const envContent = `VITE_SUPABASE_URL=${supabaseUrl}
 VITE_SUPABASE_ANON_KEY=${anonKey}
 VITE_ADMIN_EMAIL=${adminEmail}
-VITE_LLM_MODEL=${llmModel}
 `
 
   if (existsSync(".env")) {
-    const overwrite = await ask("\n⚠️  .env 已存在，是否覆盖？(y/N): ")
-    if (overwrite.toLowerCase() !== "y") {
-      console.log("已取消")
+    const overwrite = await p.confirm({ message: ".env 已存在，是否覆盖？" })
+    if (p.isCancel(overwrite) || !overwrite) {
+      p.cancel("已取消")
       process.exit(0)
     }
   }
 
   writeFileSync(".env", envContent)
-  console.log("\n✅ .env 已生成！")
-  console.log(`   VITE_SUPABASE_URL=${supabaseUrl}`)
-  console.log(`   VITE_SUPABASE_ANON_KEY=${anonKey}`)
+  p.note(`${supabaseUrl}\n${llmProvider} · ${llmModel}`, ".env 已生成")
 
-  // ==================== Step 9b: ASCII Logo ====================
-  const logoName = await ask(
-    "\nASCII Logo 显示名称: ",
-  )
-  if (logoName) {
+  // ==================== Step 12: ASCII Logo ====================
+  const logoName = await p.text({ message: "ASCII Logo 显示名称（回车跳过）" })
+  if (!p.isCancel(logoName) && logoName) {
     try {
       const figlet = await import("figlet")
       const art = figlet.default.textSync(logoName.toUpperCase(), {
@@ -333,39 +329,38 @@ VITE_LLM_MODEL=${llmModel}
       })
       if (art) {
         writeFileSync("src/components/logo.txt", art)
-        console.log("✅ ASCII Logo 已更新为:", logoName.toUpperCase())
+        p.note(logoName.toUpperCase(), "Logo 已更新")
       }
-    } catch (e) {
-      console.log("⚠️  Logo 生成失败:", e)
+    } catch {
+      // skip
     }
   }
 
-  // ==================== Step 10: 部署 Edge Function ====================
-  console.log("\n正在设置密钥...")
+  // ==================== Step 13: 部署 Edge Function ====================
+  const ds = p.spinner()
+  ds.start("设置密钥...")
   try {
-    supabase(`secrets set LLM_API_KEY=${llmApiKey}`)
-    supabase(`secrets set LLM_BASE_URL=${llmBaseUrl}`)
-    supabase(`secrets set LLM_MODEL=${llmModel}`)
-    supabase(`secrets set JINA_API_KEY=${jinaKey}`)
-    console.log("✅ 密钥已设置")
+    supabase(`secrets set LLM_API_KEY='${llmApiKey}'`)
+    supabase(`secrets set LLM_BASE_URL='${llmBaseUrl}'`)
+    supabase(`secrets set LLM_MODEL='${llmModel}'`)
+    supabase(`secrets set LLM_PROVIDER='${llmProvider}'`)
+    supabase(`secrets set JINA_API_KEY='${jinaKey}'`)
+    ds.stop("密钥已设置")
   } catch {
-    console.log("⚠️  密钥设置失败，请稍后手动执行")
+    ds.stop("密钥设置失败，请稍后手动执行")
   }
 
-  console.log("\n正在部署 Edge Function...")
+  const fs = p.spinner()
+  fs.start("部署 Edge Function...")
   try {
-    supabaseInteractive("functions deploy chat")
-    console.log("✅ Edge Function 已部署")
+    execSync("npx supabase functions deploy chat", { stdio: "inherit", timeout: 120000 })
+    fs.stop("Edge Function 已部署")
   } catch {
-    console.log("⚠️  部署失败，请稍后手动执行:")
-    console.log("     npx supabase functions deploy chat")
+    fs.stop("部署失败，请稍后手动执行:\n  npx supabase functions deploy chat")
   }
 
-  // ==================== Step 11: 完成 ====================
-  console.log("\n📋 下一步:")
-  console.log("  npm install && npm run dev")
-
-  rl.close()
+  // ==================== 完成 ====================
+  p.outro("初始化完成！运行 npm run dev 启动")
 }
 
 main().catch((e) => {
