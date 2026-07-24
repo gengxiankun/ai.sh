@@ -4,8 +4,6 @@
 
 打造你的 AI 个人站——展示简历、作品和动态。访客可通过终端命令浏览，或直接与 AI 对话获取信息。你还可上传文档（简历、报告等）让 AI 辅助回答。全部内容通过管理后台在线编辑，无需改代码。免费部署，开箱即用。
 
----
-
 ## Features
 
 - **终端风格** — `/about`、`/projects` 等命令交互 + 自然语言聊天，Tab 补全、历史记录
@@ -15,8 +13,6 @@
 - **RAG 知识库** — pgvector 向量检索，语义搜索、文档增删改
 - **用户认证** — Supabase Auth 登录注册，聊天历史持久化，管理员权限
 - **免费部署** — GitHub Pages + Supabase 免费层，零成本
-
----
 
 ## Deployment
 
@@ -61,8 +57,6 @@ git push
 进入仓库 **Settings → Pages**，Source 选 **GitHub Actions**。
 
 推送后 Actions 自动构建部署，站点地址为 `https://<your-username>.github.io/ai.sh/`。
-
----
 
 ## License
 
