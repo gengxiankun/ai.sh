@@ -95,6 +95,8 @@ async function main() {
 
   // ==================== Step 3 & 4: 获取项目 + 选择/创建 ====================
   let projectRef = ""
+  let dbPassword = ""
+
 
   const projects =
     (
@@ -138,7 +140,7 @@ async function main() {
       regions[Math.max(0, (Number(regionChoice) || 1) - 1)]?.id ??
       "ap-northeast-1"
 
-    const dbPassword = await ask("数据库密码 (至少 8 位): ")
+    dbPassword = await ask("数据库密码 (至少 8 位): ")
     if (!dbPassword || dbPassword.length < 8) {
       console.log("❌ 密码至少 8 位")
       process.exit(1)
@@ -166,6 +168,7 @@ async function main() {
   } else {
     // 已选择已有项目 (label 格式: "name  (ref)  [region]")
     projectRef = label.match(/\(([a-z0-9]{20,})\)/)?.[1] ?? ""
+    dbPassword = await ask("数据库密码 (回车跳过，跳过将不执行迁移): ")
   }
 
   if (!projectRef) {
@@ -175,7 +178,10 @@ async function main() {
 
   // ==================== Step 5a/5b: link 项目 ====================
   try {
-    supabase(`link --project-ref ${projectRef}`)
+    const linkArgs = dbPassword
+      ? `link --project-ref ${projectRef} --password "${dbPassword}"`
+      : `link --project-ref ${projectRef}`
+    supabase(linkArgs)
   } catch {
     console.log("⚠️  link 失败（可能已链接），跳过...")
   }
@@ -201,12 +207,17 @@ async function main() {
   }
 
   // ==================== Step 5c: 执行数据库迁移 ====================
-  console.log("\n正在执行数据库迁移...")
-  try {
-    supabase("db push --yes")
-    console.log("✅ 数据库迁移完成")
-  } catch {
-    console.log("⚠️  迁移执行失败，请稍后手动执行:")
+  if (dbPassword) {
+    console.log("\n正在执行数据库迁移...")
+    try {
+      supabase(`db push --yes --password "${dbPassword}"`)
+      console.log("✅ 数据库迁移完成")
+    } catch {
+      console.log("⚠️  迁移执行失败，请稍后手动执行:")
+      console.log("     npx supabase db push --yes")
+    }
+  } else {
+    console.log("\n⚠️  未提供数据库密码，跳过迁移。稍后手动执行:")
     console.log("     npx supabase db push --yes")
   }
 
@@ -235,10 +246,66 @@ async function main() {
 
   const supabaseUrl = `https://${projectRef}.supabase.co`
 
-  // ==================== Step 7: 写入 .env ====================
+  // ==================== Step 7: 对话模型配置 ====================
+  console.log("\n--- 对话模型配置 ---")
+
+  const providers: Record<string, { name: string; baseUrl: string; models: string[] }> = {
+    deepseek: { name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"] },
+    moonshot: { name: "月之暗面 (Kimi)", baseUrl: "https://api.moonshot.cn/v1", models: ["kimi-k3", "kimi-k2.6", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"] },
+    zhipu:    { name: "智谱 (GLM)",       baseUrl: "https://open.bigmodel.cn/api/paas/v4", models: ["glm-4-plus", "glm-4-flash", "glm-4-air"] },
+    qwen:     { name: "通义千问 (Qwen)",    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-turbo", "qwen-plus", "qwen-max"] },
+  }
+
+  const providerKeys = Object.keys(providers)
+  const providerLabel = await select(
+    providerKeys.map((k) => ({ key: k, ...providers[k] })),
+    (p) => p.name,
+    [{ label: "自定义", value: "custom" }],
+  )
+
+  let llmBaseUrl = ""
+  let llmModel = ""
+
+  if (providerLabel === "custom") {
+    llmBaseUrl = await ask("Base URL (e.g. https://api.openai.com/v1): ")
+    llmModel = await ask("Model (e.g. gpt-4o): ")
+    if (!llmBaseUrl || !llmModel) {
+      console.log("⚠️  URL 和 Model 不能为空")
+      process.exit(1)
+    }
+  } else {
+    const p = providers[providerLabel.toLowerCase()] ?? Object.values(providers).find((vv) => vv.name === providerLabel)
+    if (!p) process.exit(1)
+    llmBaseUrl = p.baseUrl
+
+    const modelLabel = await select(
+      p.models,
+      (m) => m,
+    )
+    llmModel = modelLabel.replace(/\s*\(推荐\)\s*$/, "")
+    console.log(`模型: ${llmModel}`)
+  }
+
+  const llmApiKey = await ask("\nLLM API Key: ")
+  if (!llmApiKey) {
+    console.log("⚠️  API Key 不能为空")
+    process.exit(1)
+  }
+
+  // ==================== Step 8: 向量模型配置 ====================
+  console.log("\n--- 向量模型配置 ---")
+  console.log("Embedding: Jina (jina-embeddings-v3)")
+  const jinaKey = await ask("Jina API Key: ")
+  if (!jinaKey) {
+    console.log("⚠️  API Key 不能为空")
+    process.exit(1)
+  }
+
+  // ==================== Step 9: 写入 .env ====================
   const envContent = `VITE_SUPABASE_URL=${supabaseUrl}
 VITE_SUPABASE_ANON_KEY=${anonKey}
 VITE_ADMIN_EMAIL=${adminEmail}
+VITE_LLM_MODEL=${llmModel}
 `
 
   if (existsSync(".env")) {
@@ -254,7 +321,7 @@ VITE_ADMIN_EMAIL=${adminEmail}
   console.log(`   VITE_SUPABASE_URL=${supabaseUrl}`)
   console.log(`   VITE_SUPABASE_ANON_KEY=${anonKey}`)
 
-  // ==================== Step 7b: ASCII Logo ====================
+  // ==================== Step 9b: ASCII Logo ====================
   const logoName = await ask(
     "\nASCII Logo 显示名称: ",
   )
@@ -273,37 +340,28 @@ VITE_ADMIN_EMAIL=${adminEmail}
     }
   }
 
-  // ==================== Step 8: Edge Function 密钥 + 部署 ====================
-  console.log("\n--- Edge Function 配置 ---")
-  const deepseekKey = await ask("DeepSeek API Key (回车跳过): ")
-  const jinaKey = await ask("Jina API Key (回车跳过): ")
+  // ==================== Step 10: 部署 Edge Function ====================
+  console.log("\n正在设置密钥...")
+  try {
+    supabase(`secrets set LLM_API_KEY=${llmApiKey}`)
+    supabase(`secrets set LLM_BASE_URL=${llmBaseUrl}`)
+    supabase(`secrets set LLM_MODEL=${llmModel}`)
+    supabase(`secrets set JINA_API_KEY=${jinaKey}`)
+    console.log("✅ 密钥已设置")
+  } catch {
+    console.log("⚠️  密钥设置失败，请稍后手动执行")
+  }
 
-  if (deepseekKey && jinaKey) {
-    console.log("\n正在设置密钥...")
-    try {
-      supabase(`secrets set DEEPSEEK_API_KEY=${deepseekKey}`)
-      supabase(`secrets set JINA_API_KEY=${jinaKey}`)
-      console.log("✅ 密钥已设置")
-    } catch {
-      console.log("⚠️  密钥设置失败，请稍后手动执行")
-    }
-
-    console.log("\n正在部署 Edge Function...")
-    try {
-      supabaseInteractive("functions deploy chat")
-      console.log("✅ Edge Function 已部署")
-    } catch {
-      console.log("⚠️  部署失败，请稍后手动执行:")
-      console.log("     npx supabase functions deploy chat")
-    }
-  } else {
-    console.log("\n⚠️  跳过 Edge Function 配置")
-    console.log("   稍后手动执行:")
-    console.log("     npx supabase secrets set DEEPSEEK_API_KEY=xxx JINA_API_KEY=xxx")
+  console.log("\n正在部署 Edge Function...")
+  try {
+    supabaseInteractive("functions deploy chat")
+    console.log("✅ Edge Function 已部署")
+  } catch {
+    console.log("⚠️  部署失败，请稍后手动执行:")
     console.log("     npx supabase functions deploy chat")
   }
 
-  // ==================== Step 9: 完成 ====================
+  // ==================== Step 11: 完成 ====================
   console.log("\n📋 下一步:")
   console.log("  npm install && npm run dev")
 

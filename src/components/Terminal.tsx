@@ -96,6 +96,15 @@ export const Terminal: FC<Props> = ({
               onChange={onInputChange}
               onInput={onInputResize}
             />
+            <div
+              className="px-3 pb-1 text-[10px]"
+              style={{
+                borderColor: 'var(--ui-input-border)',
+                color: 'var(--ui-text-secondary)',
+              }}
+            >
+              Powered by {import.meta.env.VITE_LLM_MODEL ?? 'deepseek-v4-flash'}
+            </div>
           </div>
         </div>
       </div>

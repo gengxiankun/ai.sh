@@ -1,6 +1,7 @@
-// Supabase Edge Function — DeepSeek / Jina 代理
+// Supabase Edge Function — LLM / Embedding / Scrape 代理
 // 部署: supabase functions deploy chat
-// 密钥: supabase secrets set DEEPSEEK_API_KEY=xxx JINA_API_KEY=xxx
+// 密钥: supabase secrets set LLM_API_KEY=xxx LLM_BASE_URL=xxx LLM_MODEL=xxx JINA_API_KEY=xxx
+// 兼容旧配置: 未设置 LLM_* 时回退到 DEEPSEEK_API_KEY + DeepSeek 默认值
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +14,11 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders })
   }
 
-  const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY")!
+  const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY")
+  const LLM_API_KEY   = Deno.env.get("LLM_API_KEY") ?? DEEPSEEK_API_KEY
+  const LLM_BASE_URL  = Deno.env.get("LLM_BASE_URL") ?? "https://api.deepseek.com/v1"
+  const LLM_MODEL     = Deno.env.get("LLM_MODEL") ?? "deepseek-v4-flash"
+  const LLM_MAX_TOKENS = parseInt(Deno.env.get("LLM_MAX_TOKENS") ?? "500")
   const JINA_API_KEY = Deno.env.get("JINA_API_KEY")!
 
   const body = await req.json() as {
@@ -126,21 +131,21 @@ Deno.serve(async (req: Request) => {
   }
 
   // ==================== Chat 代理 ====================
-  const deepseekBody: Record<string, unknown> = {
-    model: "deepseek-v4-flash",
+  const chatBody: Record<string, unknown> = {
+    model: LLM_MODEL,
     messages: body.messages,
-    max_tokens: 500,
+    max_tokens: LLM_MAX_TOKENS,
   }
-  if (body.tools) deepseekBody.tools = body.tools
-  if (body.stream) deepseekBody.stream = true
+  if (body.tools) chatBody.tools = body.tools
+  if (body.stream) chatBody.stream = true
 
-  const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
+  const res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+      Authorization: `Bearer ${LLM_API_KEY}`,
     },
-    body: JSON.stringify(deepseekBody),
+    body: JSON.stringify(chatBody),
   })
 
   if (body.stream) {

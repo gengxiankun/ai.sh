@@ -19,7 +19,7 @@ export const InputBox: FC<Props> = ({
   onInput,
 }) => {
   return (
-    <div className="flex items-start gap-3 px-4 py-4 text-sm max-h-[24rem] overflow-y-auto">
+    <div className="flex items-start gap-3 px-3 pt-3 pb-1 text-sm max-h-[24rem] overflow-y-auto">
       {passwordMode ? (
         // 密码模式 — 显示圆点掩码
         <span
