@@ -1,8 +1,24 @@
 # ai.sh
 
-> 一键式免费打造 AI 时代的个人站。
+## Overview
 
-## 快速开始
+打造你的 AI 个人站——展示简历、作品和动态。访客可通过终端命令浏览，或直接与 AI 对话获取信息。你还可上传文档（简历、报告等）让 AI 辅助回答。全部内容通过管理后台在线编辑，无需改代码。免费部署，开箱即用。
+
+---
+
+## Features
+
+- **终端风格** — `/about`、`/projects` 等命令交互 + 自然语言聊天，Tab 补全、历史记录
+- **AI 智能体** — 多轮 Tool Calling、流式输出，支持 DeepSeek / Kimi / GLM / Qwen / 自定义
+- **文件上传** — 上传 `.md` / `.pdf` 到对话，AI 基于文件内容回答
+- **Skill 系统** — Claude Code 风格技能：QA 助手、Web Scraper、Admin 后台管理
+- **RAG 知识库** — pgvector 向量检索，语义搜索、文档增删改
+- **用户认证** — Supabase Auth 登录注册，聊天历史持久化，管理员权限
+- **免费部署** — GitHub Pages + Supabase 免费层，零成本
+
+---
+
+## Deployment
 
 ### 1. Fork
 
@@ -21,8 +37,6 @@ npm install
 ```bash
 npm run setup
 ```
-
-交互式引导你完成：Supabase 登录 → 创建项目 → 数据库迁移 → API 密钥 → Edge Function 部署 → `.env` 生成。
 
 ### 4. 配置 GitHub Secrets
 
