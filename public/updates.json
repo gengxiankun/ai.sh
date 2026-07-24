@@ -1,0 +1,13 @@
+[
+  {"hash":"89eb479","date":"2026-07-23","message":"项目初始化 — React + Vite + Tailwind CSS 终端风格个人站"},
+  {"hash":"89eb479","date":"2026-07-23","message":"集成 DeepSeek AI 聊天 — Agent Loop + Tool Calling + 流式输出"},
+  {"hash":"89eb479","date":"2026-07-23","message":"Claude Code 风格 Skill 系统 — QA / Web Scraper / Admin Console"},
+  {"hash":"89eb479","date":"2026-07-23","message":"RAG 知识库 — pgvector + Jina Embeddings 语义搜索"},
+  {"hash":"89eb479","date":"2026-07-23","message":"Supabase Auth 登录注册 + 聊天历史持久化 + RLS 权限"},
+  {"hash":"89eb479","date":"2026-07-23","message":"Admin 后台管理 — 新闻/项目/关于/联系/知识库增删改"},
+  {"hash":"89eb479","date":"2026-07-23","message":"终端 UI — Tab 补全、历史记录、命令下拉、AI 推荐问题"},
+  {"hash":"89eb479","date":"2026-07-23","message":"一键初始化脚本 npm run setup — Supabase 项目创建到部署全自动"},
+  {"hash":"89eb479","date":"2026-07-23","message":"GitHub Pages + GitHub Actions 自动部署"},
+  {"hash":"1551de7","date":"2026-07-23","message":"README.md — 调整快速开始文档，精简部署流程"},
+  {"hash":"b3ecde5","date":"2026-07-23","message":"修复 GitHub Pages 子路径下静态资源 404 — favicon / skills / updates.json"}
+]

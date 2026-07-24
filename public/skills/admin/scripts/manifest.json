@@ -1,0 +1,18 @@
+{
+  "list_news": { "file": "list_news.js", "description": "列出所有新闻" },
+  "create_news": { "file": "create_news.js", "description": "新增新闻", "params": { "title": "标题", "detail": "内容(Markdown)" } },
+  "update_news": { "file": "update_news.js", "description": "编辑新闻", "params": { "target": "要编辑的原标题", "title": "新标题(可选)", "detail": "新内容(可选)" } },
+  "delete_news": { "file": "delete_news.js", "description": "按标题删除新闻", "params": { "title": "要删除的标题" } },
+
+  "list_projects": { "file": "list_projects.js", "description": "列出所有项目" },
+  "create_project": { "file": "create_project.js", "description": "新增项目", "params": { "name": "项目名", "url": "链接", "disabled": "是否禁用 true/false", "sort_order": "排序序号" } },
+  "update_project": { "file": "update_project.js", "description": "编辑项目", "params": { "target": "要编辑的原项目名", "name": "新项目名(可选)", "url": "链接(可选)", "disabled": "禁用 true/false(可选)", "sort_order": "排序(可选)" } },
+  "delete_project": { "file": "delete_project.js", "description": "按项目名删除", "params": { "name": "要删除的项目名" } },
+
+  "update_about": { "file": "update_about.js", "description": "更新关于内容", "params": { "content": "关于内容(Markdown)" } },
+  "update_contact": { "file": "update_contact.js", "description": "更新联系方式", "params": { "content": "联系文本", "image": "图片地址(可选)" } },
+
+  "list_kb": { "file": "list_kb.js", "description": "列出知识库文档" },
+  "create_kb": { "file": "create_kb.js", "description": "新增知识库文档(自动生成 embedding)", "params": { "title": "标题", "content": "内容", "source": "来源标记(可选)" } },
+  "delete_kb": { "file": "delete_kb.js", "description": "按 id 删除知识库文档", "params": { "id": "文档 id" } }
+}

@@ -1,0 +1,45 @@
+# ai.sh
+
+## About
+ai.sh — 一键式免费打造 AI 时代的个人站。终端风格交互，集成 DeepSeek 智能体、Skill 技能系统、RAG 知识库。
+
+## Site Features
+- AI-powered chat assistant (DeepSeek-powered, Claude Code-style skill system)
+- **Skills**: Company Q&A — AI auto-selects based on user intent
+- User registration & login (Supabase)
+- Dynamic content management (news, projects, about — editable via database)
+- Markdown rendering with GFM tables support
+- Light/dark theme auto-switching
+- AI-generated input suggestions with LLM
+
+## Commands
+- **/about** — personal profile, skills, work history, key projects
+- **/projects** — active projects with links
+- **/news** — latest company news with click-to-expand details
+- **/contact** — contact information
+- **/login <email>** / **/register <email>** — authentication (masked password)
+- **/whoami** — show current user
+- **/logout** — sign out
+- **/skills** — view AI skills
+- **/clear** — clear the screen
+
+## Admin Commands (admin only)
+- **/about edit** / **/contact edit** — edit content via popup
+- **/news add** / **/news delete** / **/news edit** — manage news
+- **/refresh** — reload data from database
+
+## AI Skills
+Skills are loaded from `skills/` directory with SKILL.md + scripts structure:
+
+### Company Q&A
+- get_news — company news & business info
+- get_about — personal profile & skills
+- get_contact — contact info
+
+## Recent Updates
+<UPDATES_PLACEHOLDER>
+
+## Endpoints for AI Agents
+- **/llms.txt** — this file (site index)
+- **/updates.json** — machine-readable update log with dates and hashes
+- **/skills/index.json** — skill directory listing

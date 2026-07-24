@@ -1,0 +1,76 @@
+@import 'tailwindcss';
+
+@plugin "@tailwindcss/typography";
+
+:root {
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+
+  --ui-bg: #f5f5f7;
+  --ui-text: #1a1a2e;
+  --ui-text-secondary: #6b7280;
+  --ui-accent: #6366f1;
+  --ui-suggestion: #c4c4cc;
+  --ui-input-bg: #ffffff;
+  --ui-input-border: #e0e0e4;
+  --ui-border: #e5e5ea;
+  --ui-action-bg: #f3f4f6;
+  --ui-action-border: #e5e7eb;
+  --ui-action-text: #6366f1;
+  --ui-action-hover-bg: #eef2ff;
+  --ui-action-hover-border: #a5b4fc;
+  --ui-disabled-bg: #f9fafb;
+  --ui-disabled-text: #9ca3af;
+  --ui-badge-bg: #fef3c7;
+  --ui-badge-text: #d97706;
+  --ui-image-bg: #f9fafb;
+
+  font-family: var(--sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ui-bg: #0d1117;
+    --ui-text: #e6edf3;
+    --ui-text-secondary: #8b949e;
+    --ui-accent: #58a6ff;
+    --ui-suggestion: #484f58;
+    --ui-input-bg: #161b22;
+    --ui-input-border: #30363d;
+    --ui-border: #21262d;
+    --ui-action-bg: rgba(28, 33, 40, 0.6);
+    --ui-action-border: rgba(48, 54, 61, 0.5);
+    --ui-action-text: #58a6ff;
+    --ui-action-hover-bg: #1f242e;
+    --ui-action-hover-border: rgba(88, 166, 255, 0.3);
+    --ui-disabled-bg: rgba(28, 33, 40, 0.4);
+    --ui-disabled-text: #484f58;
+    --ui-badge-bg: rgba(69, 40, 0, 0.6);
+    --ui-badge-text: rgba(251, 191, 36, 0.8);
+    --ui-image-bg: rgba(28, 33, 40, 0.5);
+  }
+}
+
+body {
+  margin: 0;
+}
+
+/* 全局动画 — 被多个组件复用 */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scroll-v {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}

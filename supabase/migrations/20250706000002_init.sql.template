@@ -1,0 +1,246 @@
+-- Migration: initial schema (idempotent)
+
+-- ============================================
+-- Tables
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS site_about (
+  id SERIAL PRIMARY KEY,
+  content TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS site_projects (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  url TEXT,
+  disabled BOOLEAN DEFAULT FALSE,
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS site_news (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  document_id INTEGER,
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE site_news ADD COLUMN IF NOT EXISTS document_id INTEGER;
+
+CREATE TABLE IF NOT EXISTS site_contact (
+  id SERIAL PRIMARY KEY,
+  content TEXT NOT NULL,
+  image TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS site_jobs (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  location TEXT NOT NULL DEFAULT '',
+  bonus TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
+  responsibilities TEXT NOT NULL DEFAULT '',
+  requirements TEXT NOT NULL DEFAULT '',
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS site_tasks (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  cron_expression TEXT NOT NULL DEFAULT '* * * * *',
+  command TEXT NOT NULL,
+  enabled BOOLEAN DEFAULT TRUE,
+  description TEXT DEFAULT '',
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS site_suggestions (
+  id SERIAL PRIMARY KEY,
+  questions TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id SERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users,
+  role TEXT NOT NULL DEFAULT 'user',
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
+-- RAG / Vector Search
+-- ============================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS rag_documents (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  source TEXT DEFAULT '',
+  embedding VECTOR(1024),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE OR REPLACE FUNCTION search_rag_docs(
+  query_embedding VECTOR(1536),
+  match_threshold FLOAT DEFAULT 0.7,
+  match_count INT DEFAULT 5
+) RETURNS TABLE(
+  id INT,
+  title TEXT,
+  content TEXT,
+  similarity FLOAT
+) LANGUAGE SQL STABLE AS $$
+  SELECT
+    id,
+    title,
+    content,
+    1 - (embedding <=> query_embedding) AS similarity
+  FROM rag_documents
+  WHERE 1 - (embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
+
+-- ============================================
+-- RLS: enable on all tables
+-- ============================================
+DO $$
+BEGIN
+  ALTER TABLE IF EXISTS site_about ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS site_contact ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS site_news ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS site_jobs ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS site_tasks ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS site_projects ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS rag_documents ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS site_suggestions ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS chat_messages ENABLE ROW LEVEL SECURITY;
+END $$;
+
+-- ============================================
+-- RLS policies: public read
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_about') THEN
+    CREATE POLICY "public_read" ON site_about FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_contact') THEN
+    CREATE POLICY "public_read" ON site_contact FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_news') THEN
+    CREATE POLICY "public_read" ON site_news FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_jobs') THEN
+    CREATE POLICY "public_read" ON site_jobs FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_tasks') THEN
+    CREATE POLICY "public_read" ON site_tasks FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_projects') THEN
+    CREATE POLICY "public_read" ON site_projects FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'rag_documents') THEN
+    CREATE POLICY "public_read" ON rag_documents FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_suggestions') THEN
+    CREATE POLICY "public_read" ON site_suggestions FOR SELECT USING (true);
+  END IF;
+END $$;
+
+-- ============================================
+-- RLS policies: admin (ADMIN_EMAIL placeholder will be replaced by setup)
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_about') THEN
+    CREATE POLICY "admin_update" ON site_about FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_contact') THEN
+    CREATE POLICY "admin_update" ON site_contact FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'site_news') THEN
+    CREATE POLICY "admin_insert" ON site_news FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_news') THEN
+    CREATE POLICY "admin_update" ON site_news FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'site_news') THEN
+    CREATE POLICY "admin_delete" ON site_news FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'site_jobs') THEN
+    CREATE POLICY "admin_insert" ON site_jobs FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_jobs') THEN
+    CREATE POLICY "admin_update" ON site_jobs FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'site_jobs') THEN
+    CREATE POLICY "admin_delete" ON site_jobs FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'site_tasks') THEN
+    CREATE POLICY "admin_insert" ON site_tasks FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_tasks') THEN
+    CREATE POLICY "admin_update" ON site_tasks FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'site_tasks') THEN
+    CREATE POLICY "admin_delete" ON site_tasks FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'site_projects') THEN
+    CREATE POLICY "admin_insert" ON site_projects FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_projects') THEN
+    CREATE POLICY "admin_update" ON site_projects FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'site_projects') THEN
+    CREATE POLICY "admin_delete" ON site_projects FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'rag_documents') THEN
+    CREATE POLICY "admin_insert" ON rag_documents FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'rag_documents') THEN
+    CREATE POLICY "admin_update" ON rag_documents FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'rag_documents') THEN
+    CREATE POLICY "admin_delete" ON rag_documents FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+END $$;
+
+-- ============================================
+-- RLS policies: suggestions (public write)
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_insert' AND tablename = 'site_suggestions') THEN
+    CREATE POLICY "public_insert" ON site_suggestions FOR INSERT WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_update' AND tablename = 'site_suggestions') THEN
+    CREATE POLICY "public_update" ON site_suggestions FOR UPDATE USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+-- ============================================
+-- RLS policies: chat_messages (owner only)
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'owner_select' AND tablename = 'chat_messages') THEN
+    CREATE POLICY "owner_select" ON chat_messages FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'owner_insert' AND tablename = 'chat_messages') THEN
+    CREATE POLICY "owner_insert" ON chat_messages FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+END $$;
