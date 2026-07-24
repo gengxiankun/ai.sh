@@ -1,0 +1,8 @@
+{
+  "search_knowledge_base": { "file": "search_knowledge_base.js", "description": "从知识库搜索相关信息", "params": { "query": "搜索关键词" } },
+  "get_about": { "file": "get_about.js", "description": "获取站主的个人简介、技能、工作经历和项目" },
+  "get_contact": { "file": "get_contact.js", "description": "获取联系方式" },
+  "get_update": { "file": "get_update.js", "description": "获取网站的最近更新日志和变更记录" },
+  "register_user": { "file": "register_user.js", "description": "注册新用户账号", "params": { "email": "邮箱", "password": "密码" } },
+  "login_user": { "file": "login_user.js", "description": "登录已有账号", "params": { "email": "邮箱", "password": "密码" } }
+}
