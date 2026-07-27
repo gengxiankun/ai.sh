@@ -5,6 +5,7 @@
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Access-Control-Expose-Headers": "Content-Type",
 }
@@ -13,6 +14,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
   }
+
+  try {
 
   const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY")
   const LLM_API_KEY   = Deno.env.get("LLM_API_KEY") ?? DEEPSEEK_API_KEY
@@ -45,30 +48,121 @@ Deno.serve(async (req: Request) => {
   if (body.parse_pdf && body.pdf_data) {
     try {
       const binary = Uint8Array.from(atob(body.pdf_data), (c) => c.charCodeAt(0))
-      const text = new TextDecoder("latin1").decode(binary)
+      const raw = new TextDecoder("latin1").decode(binary)
       const result: string[] = []
 
-      const btRegex = /BT([\s\S]*?)ET/g
-      let match: RegExpExecArray | null
-      while ((match = btRegex.exec(text)) !== null) {
-        const block = match[1]
-        let out = ""
-        const tjRegex = /\(([^)]*)\)\s*Tj/g
-        let tm: RegExpExecArray | null
-        while ((tm = tjRegex.exec(block)) !== null) {
-          out += tm[1]
+      // 提取 PDF 对象（含流内容）
+      const objRegex = /(\d+ \d+ obj[\s\S]*?endobj)/g
+      let om: RegExpExecArray | null
+
+      while ((om = objRegex.exec(raw)) !== null) {
+        const objData = om[1]
+
+        // 检查是否包含压缩流
+        const streamMatch = objData.match(/\/Filter\s*\/FlateDecode[\s\S]*?stream\r?\n([\s\S]*?)\r?\nendstream/)
+        let content = ""
+
+        if (streamMatch) {
+          // FlateDecode 压缩流 — 解压缩
+          try {
+            const compressed = Uint8Array.from(
+              streamMatch[1].split("").map((c) => c.charCodeAt(0))
+            )
+            const ds = new DecompressionStream("deflate")
+            const writer = ds.writable.getWriter()
+            const reader = ds.readable.getReader()
+            writer.write(compressed)
+            writer.close()
+            const chunks: Uint8Array[] = []
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              chunks.push(value)
+            }
+            const totalLen = chunks.reduce((s, c) => s + c.length, 0)
+            const decompressed = new Uint8Array(totalLen)
+            let offset = 0
+            for (const c of chunks) {
+              decompressed.set(c, offset)
+              offset += c.length
+            }
+            content = new TextDecoder("latin1").decode(decompressed)
+          } catch {
+            // 解压失败，使用原始内容
+            content = streamMatch[1]
+          }
+        } else {
+          // 非压缩流
+          const plainMatch = objData.match(/stream\r?\n([\s\S]*?)\r?\nendstream/)
+          content = plainMatch ? plainMatch[1] : objData
         }
-        // TJ array
-        const tjArrRegex = /\[([^\]]*)\]\s*TJ/g
-        let ta: RegExpExecArray | null
-        while ((ta = tjArrRegex.exec(block)) !== null) {
-          const parts = ta[1].match(/\(([^)]*)\)/g)
-          if (parts) out += parts.map((p) => p.slice(1, -1)).join("")
+
+        // 从内容中提取文本
+        const textBlocks: string[] = []
+        const btRegex = /BT([\s\S]*?)ET/g
+        let bt: RegExpExecArray | null
+        while ((bt = btRegex.exec(content)) !== null) {
+          const block = bt[1]
+          let out = ""
+
+          // Tj 操作符: (text) Tj
+          const tjRegex = /\(([^)]*)\)\s*Tj/g
+          let tj: RegExpExecArray | null
+          while ((tj = tjRegex.exec(block)) !== null) {
+            out += tj[1]
+          }
+
+          // TJ 数组: [(text) num (text) ...] TJ
+          const tjArrRegex = /\[([^\]]*)\]\s*TJ/g
+          let ta: RegExpExecArray | null
+          while ((ta = tjArrRegex.exec(block)) !== null) {
+            const parts = ta[1].match(/\(([^)]*)\)/g)
+            if (parts) out += parts.map((p) => p.slice(1, -1)).join("")
+          }
+
+          // ' 操作符 (单引号)
+          const sqRegex = /\('([^']*)'\)/g
+          let sq: RegExpExecArray | null
+          while ((sq = sqRegex.exec(block)) !== null) {
+            out += sq[1]
+          }
+
+          if (out.trim()) textBlocks.push(out)
         }
-        if (out.trim()) result.push(out)
+        result.push(...textBlocks)
       }
 
-      return new Response(result.join("\n") || "[No text extracted from PDF]", {
+      if (result.length > 0) {
+        // 去重连续的空白行
+        const cleaned = result
+          .filter((l) => l.trim())
+          .join("\n")
+        return new Response(cleaned || "[No text extracted from PDF]", {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
+        })
+      }
+
+      // 回退：尝试直接从 raw 中提取文本（无压缩的简单 PDF）
+      const fallback: string[] = []
+      const btRegex = /BT([\s\S]*?)ET/g
+      let fbm: RegExpExecArray | null
+      while ((fbm = btRegex.exec(raw)) !== null) {
+        const block = fbm[1]
+        let out = ""
+        const tjRegex = /\(([^)]*)\)\s*Tj/g
+        let tjm: RegExpExecArray | null
+        while ((tjm = tjRegex.exec(block)) !== null) out += tjm[1]
+        const tjArrRegex = /\[([^\]]*)\]\s*TJ/g
+        let tam: RegExpExecArray | null
+        while ((tam = tjArrRegex.exec(block)) !== null) {
+          const parts = tam[1].match(/\(([^)]*)\)/g)
+          if (parts) out += parts.map((p) => p.slice(1, -1)).join("")
+        }
+        if (out.trim()) fallback.push(out)
+      }
+
+      return new Response(fallback.join("\n") || "[No text extracted from PDF]", {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
       })
@@ -209,4 +303,12 @@ Deno.serve(async (req: Request) => {
     status: res.status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   })
+
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e)
+    return new Response(
+      JSON.stringify({ error: "Edge function error", detail: errMsg }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    )
+  }
 })

@@ -10,13 +10,6 @@ CREATE TABLE IF NOT EXISTS site_about (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS site_contact (
-  id SERIAL PRIMARY KEY,
-  content TEXT NOT NULL,
-  image TEXT,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS site_suggestions (
   id SERIAL PRIMARY KEY,
   questions TEXT NOT NULL,
@@ -115,7 +108,6 @@ $$;
 DO $$
 BEGIN
   ALTER TABLE IF EXISTS site_about ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS site_contact ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_categories ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_tags ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_posts ENABLE ROW LEVEL SECURITY;
@@ -132,9 +124,6 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_about') THEN
     CREATE POLICY "public_read" ON site_about FOR SELECT USING (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_contact') THEN
-    CREATE POLICY "public_read" ON site_contact FOR SELECT USING (true);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_categories') THEN
     CREATE POLICY "public_read" ON site_categories FOR SELECT USING (true);
@@ -161,11 +150,11 @@ END $$;
 -- ============================================
 DO $$
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'site_about') THEN
+    CREATE POLICY "admin_insert" ON site_about FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_about') THEN
     CREATE POLICY "admin_update" ON site_about FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_contact') THEN
-    CREATE POLICY "admin_update" ON site_contact FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
   END IF;
 
   -- site_categories

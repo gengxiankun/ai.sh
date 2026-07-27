@@ -14,6 +14,26 @@ export type SkillScript = {
   code: string
 }
 
+// 修复 LLM 可能生成的非法 JSON（deepseek 等模型有时不转义换行符等）
+function repairJSONArgs(raw: string): string {
+  try {
+    JSON.parse(raw)
+    return raw
+  } catch {
+    let fixed = raw
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t')
+      .replace(/\\(?!["\\\/bfnrtu])/g, '\\\\')
+    try {
+      JSON.parse(fixed)
+      return fixed
+    } catch {
+      return raw
+    }
+  }
+}
+
 // 执行 skill 脚本
 // 脚本必须导出 execute(args, context) 函数
 export async function runSkillScript(
@@ -21,12 +41,13 @@ export async function runSkillScript(
   args: string,
   context: { env: Record<string, string>; email?: string; userId?: string },
 ): Promise<string> {
+  const sanitizedArgs = repairJSONArgs(args)
   // new Function() 创建沙箱环境，注入脚本代码并调用 execute
   const fn = new Function(
     'args',
     'context',
     `${script.code}\nreturn execute(args, context)`,
   )
-  const result = await fn(args, context)
+  const result = await fn(sanitizedArgs, context)
   return String(result ?? '')
 }

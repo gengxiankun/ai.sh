@@ -1,10 +1,10 @@
 ---
 name: Admin Console
-description: 站点内容管理后台 — 对文章、分类、标签、关于、联系方式、知识库进行增删改查
+description: 站点内容管理后台 — 对文章、分类、标签、关于、知识库进行增删改查
 triggers: 管理, 后台, admin, 新增, 添加, 创建, create, add, 编辑, 修改, 更新, edit, update,
     删除, remove, delete, 列出, 列表, list, 文章, post, posts,
     分类, category, 标签, tag,
-    关于, about, 联系, contact, 知识库,
+    关于, about, 知识库,
    knowledge base, kb, 文档, document
 ---
 
@@ -19,7 +19,6 @@ triggers: 管理, 后台, admin, 新增, 添加, 创建, create, add, 编辑, �
 | 标签 | site_tags | id |
 | 文章-标签关联 | site_post_tags | post_id + tag_id |
 | 关于 | site_about（单行 id=1） | — |
-| 联系方式 | site_contact（单行 id=1） | — |
 | 知识库 | rag_documents | id |
 
 ## 可用工具

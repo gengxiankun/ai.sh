@@ -13,18 +13,31 @@ type Props = {
 export const AboutEdit: FC<Props> = ({ currentContent, onClose, onSaved }) => {
   const [text, setText] = useState(currentContent)
 
-  // 保存到 Supabase
+  // 保存到 Supabase — 无数据时 POST 新增，有数据时 PATCH 更新
   const save = async () => {
-    const res = await fetch(supabaseRESTPath('site_about?id=eq.1'), {
-      method: 'PATCH',
-      headers: {
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${getAuthToken()}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: JSON.stringify({ content: text }),
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const token = getAuthToken()
+    const headers = {
+      apikey: key,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    }
+
+    const check = await fetch(supabaseRESTPath('site_about?select=id&id=eq.1'), {
+      headers: { apikey: key, Authorization: `Bearer ${token}` },
     })
+    const exists = check.ok && ((await check.json()) as unknown[]).length > 0
+
+    const res = await fetch(
+      supabaseRESTPath(exists ? 'site_about?id=eq.1' : 'site_about'),
+      {
+        method: exists ? 'PATCH' : 'POST',
+        headers,
+        body: JSON.stringify(exists ? { content: text } : { id: 1, content: text }),
+      },
+    )
+
     if (res.ok) {
       onSaved()
       onClose()

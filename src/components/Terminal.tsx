@@ -143,10 +143,14 @@ export const Terminal: FC<Props> = ({
                           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
                           body: JSON.stringify({ parse_pdf: true, pdf_data: b64 }),
                         })
+                        if (!res.ok) {
+                          const errText = await res.text()
+                          throw new Error(`${res.status}: ${errText}`)
+                        }
                         const text = await res.text()
                         onFileSelect({ name: f.name, type: 'pdf', content: text })
                       } catch {
-                        onFileSelect({ name: f.name, type: 'pdf', content: '[PDF extraction failed]' })
+                        onFileSelect({ name: f.name, type: 'pdf', content: '[PDF 提取失败]' })
                       }
                     }
                   }}

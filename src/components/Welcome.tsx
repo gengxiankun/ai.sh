@@ -140,17 +140,21 @@ export const Welcome: FC<Props> = ({
                     })
                     const key = import.meta.env.VITE_SUPABASE_ANON_KEY
                     const url = import.meta.env.VITE_SUPABASE_URL
-                    try {
-                      const res = await fetch(`${url}/functions/v1/chat`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-                        body: JSON.stringify({ parse_pdf: true, pdf_data: b64 }),
-                      })
-                      const text = await res.text()
-                      onFileSelect({ name: f.name, type: 'pdf', content: text })
-                    } catch {
-                      onFileSelect({ name: f.name, type: 'pdf', content: '[PDF extraction failed]' })
-                    }
+                      try {
+                        const res = await fetch(`${url}/functions/v1/chat`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+                          body: JSON.stringify({ parse_pdf: true, pdf_data: b64 }),
+                        })
+                        if (!res.ok) {
+                          const errText = await res.text()
+                          throw new Error(`${res.status}: ${errText}`)
+                        }
+                        const text = await res.text()
+                        onFileSelect({ name: f.name, type: 'pdf', content: text })
+                      } catch {
+                        onFileSelect({ name: f.name, type: 'pdf', content: '[PDF 提取失败]' })
+                      }
                   }
                 }}
               />
