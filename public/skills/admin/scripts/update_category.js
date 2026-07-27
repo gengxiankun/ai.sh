@@ -1,15 +1,19 @@
 execute = async function(args, context) {
   if (!context.email) return '需要管理员权限，请先登录。'
   var p = typeof args === 'string' ? JSON.parse(args) : args
-  if (!p.target) return '缺少 target（要编辑的原标题）。'
+  if (!p.id) return '缺少 id（要编辑的分类 id）。'
   var body = {}
-  if (p.title !== undefined) body.title = p.title
-  if (p.detail !== undefined) body.detail = p.detail
+  if (p.name !== undefined) {
+    body.name = p.name
+    body.slug = p.slug || p.name.toLowerCase().replace(/\s+/g, '-')
+  } else if (p.slug !== undefined) {
+    body.slug = p.slug
+  }
   if (!Object.keys(body).length) return '没有要更新的字段。'
   var url = context.env.SUPABASE_URL
   var key = context.env.SUPABASE_ANON_KEY
   var token = context.env.SUPABASE_TOKEN || key
-  var res = await fetch(url + '/rest/v1/site_news?title=eq.' + encodeURIComponent(p.target), {
+  var res = await fetch(url + '/rest/v1/site_categories?id=eq.' + p.id, {
     method: 'PATCH',
     headers: {
       apikey: key,
@@ -19,6 +23,6 @@ execute = async function(args, context) {
     },
     body: JSON.stringify(body)
   })
-  if (!res.ok) return '编辑新闻失败: ' + res.status
-  return '新闻「' + p.target + '」已更新。'
+  if (!res.ok) return '更新分类失败: ' + res.status
+  return '分类 #' + p.id + ' 已更新。'
 }

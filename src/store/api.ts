@@ -2,7 +2,7 @@
 // 每次调用都发起 HTTP 请求获取最新数据
 
 import { fetchREST } from '../lib/api'
-import type { SiteProject, SiteNewsItem } from '../types'
+import type { SitePost, SiteCategory, SiteTag } from '../types'
 
 export async function fetchAbout(): Promise<string> {
   const data = await fetchREST<{ content: string }[]>(
@@ -11,23 +11,23 @@ export async function fetchAbout(): Promise<string> {
   return data?.[0]?.content ?? ''
 }
 
-export async function fetchProjects(): Promise<SiteProject[]> {
-  const data = await fetchREST<SiteProject[]>(
-    'site_projects?select=name,url,disabled&order=sort_order',
+export async function fetchPosts(): Promise<SitePost[]> {
+  const data = await fetchREST<SitePost[]>(
+    'site_posts?select=id,title,detail,category_id,document_id&order=sort_order',
   )
   return data ?? []
 }
 
-export async function fetchNews(): Promise<SiteNewsItem[]> {
-  const data = await fetchREST<SiteNewsItem[]>(
-    'site_news?select=title,detail,document_id&order=sort_order',
+export async function fetchCategories(): Promise<SiteCategory[]> {
+  const data = await fetchREST<SiteCategory[]>(
+    'site_categories?select=id,name,slug&order=sort_order',
   )
   return data ?? []
 }
 
-export async function fetchContact(): Promise<{ content: string; image: string }> {
-  const data = await fetchREST<{ content: string; image: string }[]>(
-    'site_contact?select=content,image&limit=1',
+export async function fetchTags(): Promise<SiteTag[]> {
+  const data = await fetchREST<SiteTag[]>(
+    'site_tags?select=id,name,slug&order=name',
   )
-  return data?.[0] ?? { content: '', image: '' }
+  return data ?? []
 }

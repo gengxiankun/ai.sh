@@ -1,13 +1,18 @@
 {
-  "list_news": { "file": "list_news.js", "description": "列出所有新闻" },
-  "create_news": { "file": "create_news.js", "description": "新增新闻", "params": { "title": "标题", "detail": "内容(Markdown)" } },
-  "update_news": { "file": "update_news.js", "description": "编辑新闻", "params": { "target": "要编辑的原标题", "title": "新标题(可选)", "detail": "新内容(可选)" } },
-  "delete_news": { "file": "delete_news.js", "description": "按标题删除新闻", "params": { "title": "要删除的标题" } },
+  "list_posts": { "file": "list_posts.js", "description": "列出所有文章" },
+  "create_post": { "file": "create_post.js", "description": "新增文章（需先 list_categories/list_tags）", "params": { "title": "标题", "detail": "内容(Markdown)", "category_id": "分类id", "tags": "标签id数组" } },
+  "update_post": { "file": "update_post.js", "description": "编辑文章", "params": { "id": "文章id", "title": "新标题(可选)", "detail": "新内容(可选)", "category_id": "分类id(可选)", "tags": "标签id数组(可选)" } },
+  "delete_post": { "file": "delete_post.js", "description": "按 id 删除文章", "params": { "id": "文章id" } },
 
-  "list_projects": { "file": "list_projects.js", "description": "列出所有项目" },
-  "create_project": { "file": "create_project.js", "description": "新增项目", "params": { "name": "项目名", "url": "链接", "disabled": "是否禁用 true/false", "sort_order": "排序序号" } },
-  "update_project": { "file": "update_project.js", "description": "编辑项目", "params": { "target": "要编辑的原项目名", "name": "新项目名(可选)", "url": "链接(可选)", "disabled": "禁用 true/false(可选)", "sort_order": "排序(可选)" } },
-  "delete_project": { "file": "delete_project.js", "description": "按项目名删除", "params": { "name": "要删除的项目名" } },
+  "list_categories": { "file": "list_categories.js", "description": "列出所有分类" },
+  "create_category": { "file": "create_category.js", "description": "新增分类", "params": { "name": "分类名" } },
+  "update_category": { "file": "update_category.js", "description": "编辑分类", "params": { "id": "分类id", "name": "新分类名(可选)" } },
+  "delete_category": { "file": "delete_category.js", "description": "按 id 删除分类", "params": { "id": "分类id" } },
+
+  "list_tags": { "file": "list_tags.js", "description": "列出所有标签" },
+  "create_tag": { "file": "create_tag.js", "description": "新增标签", "params": { "name": "标签名" } },
+  "update_tag": { "file": "update_tag.js", "description": "编辑标签", "params": { "id": "标签id", "name": "新标签名(可选)" } },
+  "delete_tag": { "file": "delete_tag.js", "description": "按 id 删除标签", "params": { "id": "标签id" } },
 
   "update_about": { "file": "update_about.js", "description": "更新关于内容", "params": { "content": "关于内容(Markdown)" } },
   "update_contact": { "file": "update_contact.js", "description": "更新联系方式", "params": { "content": "联系文本", "image": "图片地址(可选)" } },

@@ -15,6 +15,9 @@ export type ChatStep = {
 export type Action = {
   label: string
   detail?: string
+  description?: string
+  category?: string
+  tags?: string[]
   url?: string
   disabled?: boolean
   image?: string
@@ -47,23 +50,24 @@ export type PendingFile = {
 }
 
 // site-data 数据类型
-export type SiteProject = {
-  name: string
-  url?: string
-  disabled: boolean
-}
-
-export type SiteNewsItem = {
+export type SitePost = {
+  id: number
   title: string
   detail: string
+  category_id?: number
   document_id?: number
 }
 
-// 更新日志条目
-export type UpdateEntry = {
-  hash: string
-  date: string
-  message: string
+export type SiteCategory = {
+  id: number
+  name: string
+  slug: string
+}
+
+export type SiteTag = {
+  id: number
+  name: string
+  slug: string
 }
 
 // useAuth 返回类型

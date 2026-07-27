@@ -11,31 +11,31 @@ type Props = {
 
 export const SkillsList: FC<Props> = ({ skills, onClose }) => {
   return (
-    <Modal title="Skills" onClose={onClose}>
+    <Modal title="AI Skills" onClose={onClose} className="max-w-md">
       {skills.length === 0 ? (
         <div
-          className="text-sm text-center py-2"
+          className="text-xs text-center py-2"
           style={{ color: 'var(--ui-suggestion)' }}
         >
-          No skills loaded
+          暂无可用 Skills
         </div>
       ) : (
-        <div className="flex flex-col gap-1 max-h-[16rem] overflow-y-auto">
+        <div className="flex flex-col gap-1.5 max-h-[14rem] overflow-y-auto">
           {skills.map((s) => (
             <div
               key={s.id}
-              className="px-2.5 py-2 rounded-md border text-sm transition-all"
+              className="px-2 py-1.5 rounded-md border"
               style={{
                 background: 'var(--ui-action-bg)',
                 borderColor: 'var(--ui-action-border)',
               }}
             >
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="font-semibold shrink-0" style={{ color: 'var(--ui-text)' }}>
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-xs shrink-0" style={{ color: 'var(--ui-text)' }}>
                   {s.name}
                 </span>
                 <span
-                  className="text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0"
+                  className="text-[10px] px-1 py-0.5 rounded font-medium shrink-0"
                   style={{
                     background: 'var(--ui-accent)',
                     color: '#fff',
@@ -45,7 +45,7 @@ export const SkillsList: FC<Props> = ({ skills, onClose }) => {
                 </span>
                 {s.triggers.length > 0 && (
                   <span
-                    className="text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0"
+                    className="text-[10px] px-1 py-0.5 rounded font-medium shrink-0"
                     style={{
                       background: 'var(--ui-badge-bg)',
                       color: 'var(--ui-badge-text)',
@@ -55,7 +55,7 @@ export const SkillsList: FC<Props> = ({ skills, onClose }) => {
                   </span>
                 )}
               </div>
-              <p style={{ color: 'var(--ui-text-secondary)', lineHeight: '1.4' }}>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--ui-text-secondary)', lineHeight: '1.3' }}>
                 {s.description}
               </p>
             </div>

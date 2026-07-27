@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react'
 import { getSupabase } from './lib/supabase'
 import { chat, readStream } from './lib/chat'
 import { TOOLS } from './store/commands'
-import { fetchAbout, fetchProjects, fetchNews, fetchContact } from './store/api'
+import { fetchAbout, fetchPosts, fetchCategories, fetchTags } from './store/api'
 import { fetchSkills } from './lib/skills/index'
 import {
   searchDocuments,
@@ -18,15 +18,13 @@ import { getAuthToken } from './lib/api'
 import { Terminal } from './components/Terminal'
 import { Welcome } from './components/Welcome'
 import { AboutEdit } from './components/modals/AboutEdit'
-import { NewsForm } from './components/modals/NewsForm'
+import { PostForm } from './components/modals/PostForm'
 import { KBForm } from './components/modals/KBForm'
 import { SkillsList } from './components/modals/SkillsList'
-import { UpdateLogModal } from './components/modals/UpdateLogModal'
 import type {
   Action,
   Line,
   CommandResult,
-  UpdateEntry,
   ChatStep,
   Skill,
   PendingFile,
@@ -40,46 +38,49 @@ const COMMANDS: Record<string, (args: string[]) => Promise<CommandResult>> = {
     return text || 'No content yet.'
   },
 
-  projects: async () => {
-    const projects = await fetchProjects()
-    return {
-      output: 'My projects:',
-      actions: projects.map((p) => ({
-        label: p.name,
-        url: p.disabled ? undefined : p.url,
-        disabled: p.disabled,
-      })),
-    }
-  },
+  posts: async () => {
+    const [posts, categories, tags] = await Promise.all([
+      fetchPosts(),
+      fetchCategories(),
+      fetchTags(),
+    ])
+    const catMap = new Map(categories.map((c) => [c.id, c.name]))
+    const tagMap = new Map(tags.map((t) => [t.id, t.name]))
 
-  news: async () => {
-    const news = await fetchNews()
-    return {
-      output: 'Click the title to view details:',
-      actions: news.map((n) => ({
-        label: n.title,
-        detail: n.detail,
-        inlineActions: [
-          { label: '', _edit: { table: 'site_news', title: n.title } },
-          { label: '', _delete: { table: 'site_news', title: n.title } },
-        ],
-      })),
-    }
-  },
+    // 批量获取所有 post_tags
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const ptData: { post_id: number; tag_id: number }[] = await fetch(
+      `${supabaseUrl}/rest/v1/site_post_tags?select=post_id,tag_id`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+    ).then((r) => r.json()).catch(() => [])
 
-  contact: async () => {
-    const contact = await fetchContact()
+    const postTags = new Map<number, number[]>()
+    for (const pt of ptData ?? []) {
+      const list = postTags.get(pt.post_id) ?? []
+      list.push(pt.tag_id)
+      postTags.set(pt.post_id, list)
+    }
+
+    if (!posts.length) return '暂无文章。'
+
     return {
-      output: 'Get in touch:',
-      actions: contact.content
-        ? [
-            {
-              label: '微信公众号',
-              detail: contact.content,
-              image: contact.image || undefined,
-            },
-          ]
-        : [],
+      output: `共 ${posts.length} 篇`,
+      actions: posts.map((p) => {
+        const catName = p.category_id ? catMap.get(p.category_id) : undefined
+        const tagIds = postTags.get(p.id) ?? []
+        const tagNames = tagIds.map((tid) => tagMap.get(tid)).filter(Boolean) as string[]
+        return {
+          label: p.title,
+          category: catName,
+          tags: tagNames.length > 0 ? tagNames : undefined,
+          detail: p.detail,
+          inlineActions: [
+            { label: '', _edit: { table: 'site_posts', title: p.title, id: p.id } },
+            { label: '', _delete: { table: 'site_posts', title: p.title } },
+          ],
+        }
+      }),
     }
   },
 }
@@ -87,30 +88,24 @@ const COMMANDS: Record<string, (args: string[]) => Promise<CommandResult>> = {
 // 命令描述 — 用于 autocomplete dropdown 提示
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
   about: 'view my profile, skills & work experience',
-  projects: 'browse my projects with links',
-  news: 'latest company updates (click to expand)',
-  contact: 'how to reach me',
+  posts: 'browse my posts (click to expand)',
   login: 'sign in with email & password',
   register: 'create a new account',
   whoami: 'show current user',
   logout: 'sign out',
-  clear: 'clear the screen',
   skills: 'view AI skills',
   'knowledge-base': 'RAG knowledge base search & upload',
-  'update-log': 'view changelog grouped by date',
 }
 
 // 所有可用命令（含系统命令）
 const ALL_COMMANDS = [
   ...Object.keys(COMMANDS),
-  'clear',
   'login',
   'register',
   'whoami',
   'logout',
   'skills',
   'knowledge-base',
-  'update-log',
 ]
 
 export default function App() {
@@ -145,10 +140,6 @@ export default function App() {
   const skillsRef = useRef<Skill[]>([])
   const [skillModal, setSkillModal] = useState(false)
   const skillModalRef = useRef(false)
-  const [updateLogModal, setUpdateLogModal] = useState(false)
-  const updateLogModalRef = useRef(false)
-  updateLogModalRef.current = updateLogModal
-
   // 模型信息（从 Edge Function 获取）
   const [modelInfo, setModelInfo] = useState<{ provider: string; model: string } | null>(null)
 
@@ -161,20 +152,15 @@ export default function App() {
   // Admin 弹层状态
   const [adminSection, setAdminSection] = useState<string | null>(null)
   const [adminText, setAdminText] = useState('')
-  const [newsTitle, setNewsTitle] = useState('')
-  const [newsDetail, setNewsDetail] = useState('')
-  const [newsEditDocId, setNewsEditDocId] = useState<number | null>(null)
+  const [postTitle, setPostTitle] = useState('')
+  const [postDetail, setPostDetail] = useState('')
+  const [postEditDocId, setPostEditDocId] = useState<number | null>(null)
   const [kbTitle, setKbTitle] = useState('')
   const [kbContent, setKbContent] = useState('')
   const [kbEditId, setKbEditId] = useState<number | null>(null)
-  const [newsEditId, setNewsEditId] = useState('')
+  const [postEditId, setPostEditId] = useState('')
   const adminSectionRef = useRef<string | null>(null)
   adminSectionRef.current = adminSection
-
-  // 更新日志
-  const [updates, setUpdates] = useState<UpdateEntry[]>([])
-  const updatesRef = useRef<UpdateEntry[]>([])
-  updatesRef.current = updates
 
   // DOM refs
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -236,20 +222,12 @@ export default function App() {
     const el = containerRef.current
     if (!el) return
     const cb = () => {
-      if (adminSectionRef.current || updateLogModalRef.current) return
+      if (adminSectionRef.current) return
       const inp = el.querySelector('input')
       if (inp && document.activeElement !== inp) inp.focus()
     }
     el.addEventListener('click', cb)
     return () => el.removeEventListener('click', cb)
-  }, [])
-
-  // 加载更新日志
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}updates.json`)
-      .then((r) => r.json())
-      .then(setUpdates)
-      .catch(() => {})
   }, [])
 
   // 从 Edge Function 获取模型信息
@@ -306,11 +284,24 @@ export default function App() {
     if (action._delete && isAdminRef.current) {
       const col = action._delete.col || 'title'
       const val = encodeURIComponent(action._delete.title)
+      const table = action._delete.table
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY
       const token = getAuthToken()
+
+      // 删除 post 时同步删除关联的 RAG 文档
+      if (table === 'site_posts') {
+        const item = await fetch(
+          `${supabaseUrl}/rest/v1/site_posts?${col}=eq.${val}&select=document_id`,
+          { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+        )
+          .then((r) => r.json())
+          .then((d) => d?.[0])
+        if (item?.document_id) deleteDocumentById(item.document_id).then()
+      }
+
       fetch(
-        `${supabaseUrl}/rest/v1/${action._delete.table}?${col}=eq.${val}`,
+        `${supabaseUrl}/rest/v1/${table}?${col}=eq.${val}`,
         {
           method: 'DELETE',
           headers: {
@@ -328,7 +319,7 @@ export default function App() {
       ])
       return
     }
-    // Admin 编辑 News
+    // Admin 编辑 Post
     if (action._edit && isAdminRef.current) {
       if (action._edit.table === 'rag' && action._edit.id) {
         const key = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -350,14 +341,14 @@ export default function App() {
           })
         return
       }
-      const news = await fetchNews()
-      const n = news.find((x) => x.title === action._edit!.title)
-      if (n) {
-        setNewsEditId(n.title)
-        setNewsEditDocId(n.document_id ?? null)
-        setNewsTitle(n.title)
-        setNewsDetail(n.detail)
-        setAdminSection('news-edit')
+      const posts = await fetchPosts()
+      const p = posts.find((x) => x.title === action._edit!.title)
+      if (p) {
+        setPostEditId(String(p.id))
+        setPostEditDocId(p.document_id ?? null)
+        setPostTitle(p.title)
+        setPostDetail(p.detail)
+        setAdminSection('post-edit')
         return
       }
       return
@@ -451,11 +442,11 @@ export default function App() {
       return
     }
 
-    // ==================== /news — 新闻管理 ====================
-    if (lower === 'news') {
+    // ==================== /posts — 文章管理 ====================
+    if (lower === 'posts') {
       const subcmd = args[0]?.toLowerCase()
 
-      // /news delete <title> (admin)
+      // /posts delete <title> (admin)
       if (subcmd === 'delete') {
         if (!isAdminRef.current) {
           setHistory((prev) => [...prev, { input: cmd, output: '需要管理员权限。请先登录。' }])
@@ -465,7 +456,7 @@ export default function App() {
         if (!title) {
           setHistory((prev) => [
             ...prev,
-            { input: cmd, output: 'Usage: /news delete <title>' },
+            { input: cmd, output: 'Usage: /posts delete <title>' },
           ])
           return
         }
@@ -473,13 +464,13 @@ export default function App() {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
         const token = getAuthToken()
         const item = await fetch(
-          `${supabaseUrl}/rest/v1/site_news?title=eq.${encodeURIComponent(title)}&select=document_id`,
+          `${supabaseUrl}/rest/v1/site_posts?title=eq.${encodeURIComponent(title)}&select=id,document_id`,
           { headers: { apikey: key, Authorization: `Bearer ${key}` } },
         )
           .then((r) => r.json())
           .then((d) => d?.[0])
         const ok = await fetch(
-          `${supabaseUrl}/rest/v1/site_news?title=eq.${encodeURIComponent(title)}`,
+          `${supabaseUrl}/rest/v1/site_posts?title=eq.${encodeURIComponent(title)}`,
           {
             method: 'DELETE',
             headers: {
@@ -494,7 +485,7 @@ export default function App() {
           setDataVersion((v) => v + 1)
           setHistory((prev) => [
             ...prev,
-            { input: cmd, output: `News "${title}" deleted.` },
+            { input: cmd, output: `Post "${title}" deleted.` },
           ])
         } else {
           setHistory((prev) => [
@@ -505,19 +496,19 @@ export default function App() {
         return
       }
 
-      // /news add (admin) — 打开新增表单
+      // /posts add (admin) — 打开新增表单
       if (subcmd === 'add') {
         if (!isAdminRef.current) {
           setHistory((prev) => [...prev, { input: cmd, output: '需要管理员权限。请先登录。' }])
           return
         }
-        setAdminSection('news-add')
-        setNewsTitle('')
-        setNewsDetail('')
+        setAdminSection('post-add')
+        setPostTitle('')
+        setPostDetail('')
         return
       }
 
-      // /news — 查看新闻列表（走通用 COMMANDS handler）
+      // /posts — 查看文章列表（走通用 COMMANDS handler）
     }
 
     // ==================== /about — 关于 (admin edit) ====================
@@ -703,24 +694,7 @@ export default function App() {
       return
     }
 
-    // ==================== /clear — 清屏 ====================
-    if (lower === 'clear') {
-      setHistory([])
-      requestAnimationFrame(() => containerRef.current?.focus())
-      return
-    }
-
-    // ==================== /update-log — 更新日志时间线 ====================
-    if (lower === 'update-log') {
-      if (!updatesRef.current.length) {
-        setHistory((prev) => [...prev, { input: cmd, output: '暂无可用的更新日志。' }])
-        return
-      }
-      setUpdateLogModal(true)
-      return
-    }
-
-    // ==================== 通用命令（about, projects, news, contact）====================
+    // ==================== 通用命令（about, posts）====================
     const handler = COMMANDS[lower]
     if (!handler) {
       setHistory((prev) => [
@@ -792,13 +766,18 @@ export default function App() {
                 updated[i].output === ''
               ) {
                 const existing = [...(updated[i].steps ?? [])]
-                const idx = existing.findIndex(
-                  (s) => s.tool === step.tool,
-                )
-                if (idx >= 0) {
-                  existing[idx] = step
-                } else {
+                // 推理步骤每次追加，工具调用步骤按 tool 去重
+                if (step.status === 'reasoning') {
                   existing.push(step)
+                } else {
+                  const idx = existing.findIndex(
+                    (s) => s.tool === step.tool,
+                  )
+                  if (idx >= 0) {
+                    existing[idx] = step
+                  } else {
+                    existing.push(step)
+                  }
                 }
                 updated[i] = { ...updated[i], steps: existing }
                 break
@@ -1030,10 +1009,6 @@ export default function App() {
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
-        if (updateLogModalRef.current) {
-          setUpdateLogModal(false)
-          return
-        }
         if (passwordModeRef.current) {
           setPasswordMode(null)
           setRealPassword('')
@@ -1043,7 +1018,7 @@ export default function App() {
         return
       }
 
-      if (adminSectionRef.current || updateLogModalRef.current) return
+      if (adminSectionRef.current) return
 
       // Shift+Enter / Ctrl+Enter / Meta+Enter — 换行
       if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
@@ -1239,7 +1214,6 @@ export default function App() {
         <Welcome
           input={input}
           suggestions={suggestions}
-          updates={updates}
           dropdownCommands={dropdownCommands}
           commandDescriptions={COMMAND_DESCRIPTIONS}
           dropdownIdx={dropdownIdx}
@@ -1270,7 +1244,6 @@ export default function App() {
             setInput('我想注册或登录账号')
             setHistoryIdx(-1)
           }}
-          onOpenUpdateLog={() => setUpdateLogModal(true)}
           onFileSelect={setPendingFile}
           onFileRemove={() => setPendingFile(null)}
         />
@@ -1285,16 +1258,16 @@ export default function App() {
         />
       )}
 
-      {(adminSection === 'news-add' || adminSection === 'news-edit') && (
-        <NewsForm
-          mode={adminSection === 'news-add' ? 'add' : 'edit'}
-          initialTitle={newsTitle}
-          initialDetail={newsDetail}
-          editId={newsEditId || undefined}
-          editDocId={newsEditDocId}
+      {(adminSection === 'post-add' || adminSection === 'post-edit') && (
+        <PostForm
+          mode={adminSection === 'post-add' ? 'add' : 'edit'}
+          initialTitle={postTitle}
+          initialDetail={postDetail}
+          editId={postEditId || undefined}
+          editDocId={postEditDocId}
           onClose={() => {
             setAdminSection(null)
-            setNewsEditDocId(null)
+            setPostEditDocId(null)
           }}
           onSaved={() => setDataVersion((v) => v + 1)}
         />
@@ -1320,13 +1293,6 @@ export default function App() {
         <SkillsList
           skills={skills}
           onClose={() => setSkillModal(false)}
-        />
-      )}
-
-      {updateLogModal && (
-        <UpdateLogModal
-          updates={updates}
-          onClose={() => setUpdateLogModal(false)}
         />
       )}
 

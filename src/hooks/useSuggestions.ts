@@ -35,12 +35,12 @@ export function useSuggestions(dataVersion: number) {
     const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 
     fetch(
-      `${supabaseUrl}/rest/v1/site_news?select=title&order=sort_order`,
+      `${supabaseUrl}/rest/v1/site_posts?select=title&order=sort_order`,
       { headers: { apikey: key, Authorization: `Bearer ${key}` } },
     )
       .then((r) => r.json())
-      .then(async (news: { title: string }[]) => {
-        const titles = news.map((n) => n.title)
+      .then(async (posts: { title: string }[]) => {
+        const titles = posts.map((n) => n.title)
         if (!titles.length) return
 
         const rows: { id: number; questions: string; created_at: string }[] =
@@ -78,15 +78,12 @@ export function useSuggestions(dataVersion: number) {
 
 本网站功能：
 - 查看个人简介、技能、工作经历（/about）
-- 查看项目作品（/projects）
-- 查看公司新闻动态（/news）
-- 查看联系方式（/contact）
+- 查看文章/博客（/posts）
 - AI 智能对话聊天（支持 RAG 知识库搜索）
-- 查看更新日志时间线（/update-log）
 - AI Skills 系统（QA）
 - 注册 / 登录账号
 
-最新新闻：
+最新文章：
 ${titles.join('\n')}`
 
         try {

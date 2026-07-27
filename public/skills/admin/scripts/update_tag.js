@@ -1,17 +1,19 @@
 execute = async function(args, context) {
   if (!context.email) return '需要管理员权限，请先登录。'
   var p = typeof args === 'string' ? JSON.parse(args) : args
-  if (!p.target) return '缺少 target（要编辑的原项目名）。'
+  if (!p.id) return '缺少 id（要编辑的标签 id）。'
   var body = {}
-  if (p.name !== undefined) body.name = p.name
-  if (p.url !== undefined) body.url = p.url
-  if (p.disabled !== undefined) body.disabled = (p.disabled === true || p.disabled === 'true')
-  if (p.sort_order !== undefined) body.sort_order = parseInt(p.sort_order, 10) || 0
+  if (p.name !== undefined) {
+    body.name = p.name
+    body.slug = p.slug || p.name.toLowerCase().replace(/\s+/g, '-')
+  } else if (p.slug !== undefined) {
+    body.slug = p.slug
+  }
   if (!Object.keys(body).length) return '没有要更新的字段。'
   var url = context.env.SUPABASE_URL
   var key = context.env.SUPABASE_ANON_KEY
   var token = context.env.SUPABASE_TOKEN || key
-  var res = await fetch(url + '/rest/v1/site_projects?name=eq.' + encodeURIComponent(p.target), {
+  var res = await fetch(url + '/rest/v1/site_tags?id=eq.' + p.id, {
     method: 'PATCH',
     headers: {
       apikey: key,
@@ -21,6 +23,6 @@ execute = async function(args, context) {
     },
     body: JSON.stringify(body)
   })
-  if (!res.ok) return '编辑项目失败: ' + res.status
-  return '项目「' + p.target + '」已更新。'
+  if (!res.ok) return '更新标签失败: ' + res.status
+  return '标签 #' + p.id + ' 已更新。'
 }

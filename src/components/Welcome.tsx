@@ -4,19 +4,17 @@
 import { type FC, type RefObject } from 'react'
 import type { User } from '@supabase/supabase-js'
 import type { Skill } from '../lib/skills/index'
-import type { UpdateEntry, PendingFile } from '../types'
+import type { PendingFile } from '../types'
 import { CommandDropdown } from './CommandDropdown'
 import { StatusBar } from './StatusBar'
 import { InputBox } from './InputBox'
 import logoText from './logo.txt?raw'
 import { Suggestions } from './Suggestions'
-import { UpdatesScroll } from './UpdatesScroll'
 import { Paperclip, X } from 'lucide-react'
 
 type Props = {
   input: string
   suggestions: string[]
-  updates: UpdateEntry[]
   dropdownCommands: string[]
   commandDescriptions: Record<string, string>
   dropdownIdx: number
@@ -34,7 +32,6 @@ type Props = {
   onDropdownLeave: () => void
   onDropdownSelect: (cmd: string) => void
   onGuestClick: () => void
-  onOpenUpdateLog?: () => void
   onFileSelect: (file: PendingFile) => void
   onFileRemove: () => void
 }
@@ -42,7 +39,6 @@ type Props = {
 export const Welcome: FC<Props> = ({
   input,
   suggestions,
-  updates,
   dropdownCommands,
   commandDescriptions,
   dropdownIdx,
@@ -60,7 +56,6 @@ export const Welcome: FC<Props> = ({
   onDropdownLeave,
   onDropdownSelect,
   onGuestClick,
-  onOpenUpdateLog,
   onFileSelect,
   onFileRemove,
 }) => {
@@ -184,10 +179,9 @@ export const Welcome: FC<Props> = ({
         </div>
       </div>
 
-      {/* AI 推荐问题 + 更新日志滚动条 */}
+      {/* AI 推荐问题 */}
       <div className="w-full max-w-3xl">
         <Suggestions suggestions={suggestions} onSelect={onInputChange} />
-        <UpdatesScroll updates={updates} onClick={onOpenUpdateLog} />
       </div>
     </div>
   )

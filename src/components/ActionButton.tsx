@@ -36,6 +36,14 @@ export const ActionButton: FC<Props> = ({ action, isAdmin, onClick }) => {
         }}
       >
         <span style={{ color: 'var(--ui-disabled-text)' }}>{action.label}</span>
+        {action.description && (
+          <span
+            className="text-[11px] ml-auto shrink-0 truncate"
+            style={{ color: 'var(--ui-disabled-text)', opacity: 0.6 }}
+          >
+            {action.description}
+          </span>
+        )}
         <span
           className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
           style={{
@@ -68,6 +76,14 @@ export const ActionButton: FC<Props> = ({ action, isAdmin, onClick }) => {
         <span className="group-hover:translate-x-0.5 transition-transform truncate">
           {action.label}
         </span>
+        {action.description && (
+          <span
+            className="text-[11px] ml-auto shrink-0 truncate"
+            style={{ color: 'var(--ui-text-secondary)' }}
+          >
+            {action.description}
+          </span>
+        )}
         <svg
           className="w-3 h-3 opacity-40 group-hover:opacity-80 transition-opacity ml-auto shrink-0"
           viewBox="0 0 24 24"
@@ -85,7 +101,7 @@ export const ActionButton: FC<Props> = ({ action, isAdmin, onClick }) => {
   return (
     <button
       type="button"
-      className={`${baseClass} cursor-pointer group text-left`}
+      className={`flex flex-col ${baseClass} cursor-pointer group text-left items-start`}
       style={{
         background: 'var(--ui-action-bg)',
         borderColor: 'var(--ui-action-border)',
@@ -94,16 +110,17 @@ export const ActionButton: FC<Props> = ({ action, isAdmin, onClick }) => {
       {...hoverHandlers}
       onClick={() => onClick(action)}
     >
-      <span className="group-hover:translate-x-0.5 transition-transform truncate">
-        {action.label}
-      </span>
-      {action.inlineActions && isAdmin ? (
-        <span
-          className="flex items-center gap-0.5 ml-auto shrink-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {action.inlineActions.map((ia, k) => (
-            <span
+      <div className="flex items-center w-full">
+        <span className="group-hover:translate-x-0.5 transition-transform truncate">
+          {action.label}
+        </span>
+        {action.inlineActions && isAdmin ? (
+          <span
+            className="flex items-center gap-0.5 ml-auto shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {action.inlineActions.map((ia, k) => (
+              <span
               key={k}
               className="w-5 h-5 rounded flex items-center justify-center cursor-pointer hover:opacity-60 transition-opacity"
               style={{
@@ -143,6 +160,40 @@ export const ActionButton: FC<Props> = ({ action, isAdmin, onClick }) => {
         >
           <path d="m6 9 6 6 6-6" />
         </svg>
+      )}
+      </div>
+      {action.description && (
+        <div
+          className="text-[11px] mt-0.5"
+          style={{ color: 'var(--ui-text-secondary)' }}
+        >
+          {action.description}
+        </div>
+      )}
+      {(action.category || (action.tags && action.tags.length > 0)) && (
+        <div className="flex items-center gap-1.5 mt-px">
+          {action.category && (
+            <span
+              className="text-xs"
+              style={{ color: 'var(--ui-text-secondary)' }}
+            >
+              {action.category}
+            </span>
+          )}
+          {action.tags && action.tags.map((tag) => (
+            <span
+              key={tag}
+              className="text-xs px-1.5 py-px rounded"
+              style={{
+                color: 'var(--ui-accent)',
+                background: 'var(--ui-action-hover-bg)',
+                border: '0.5px solid var(--ui-action-hover-border)',
+              }}
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
       )}
     </button>
   )
