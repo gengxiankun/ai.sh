@@ -145,6 +145,41 @@ async function executeToolCalls(
   )
 }
 
+// 第一阶段：LLM 路由 — 根据用户消息选择最合适的 skill
+// 只发送 skill 元数据（name + description），不发送 prompt 和 tools
+async function routeSkill(
+  userMessage: string,
+  skillsMeta: { id: string; name: string; description: string }[],
+): Promise<string> {
+  if (skillsMeta.length <= 1) return skillsMeta[0]?.id ?? ''
+
+  const skillList = skillsMeta
+    .map((s) => `- **${s.name}** (id: ${s.id}): ${s.description}`)
+    .join('\n')
+
+  const routingPrompt = `You are a skill router. Based on the user's message, select the most appropriate skill.
+
+Available skills:
+${skillList}
+
+Respond with ONLY the skill id (one word, e.g. "qa"), nothing else.`
+
+  const res = await callAPI(
+    [
+      { role: 'system', content: routingPrompt },
+      { role: 'user', content: userMessage },
+    ],
+    undefined,
+    false,
+  )
+  const data = await res.json()
+  const choice = data.choices?.[0]?.message?.content?.trim()?.toLowerCase()
+  const skillId = choice?.replace(/^(the |skill[ :])/i, '')?.split(/\s+/)[0] ?? ''
+
+  const match = skillsMeta.find((s) => s.id === skillId)
+  return match?.id ?? skillsMeta[0].id
+}
+
 // 主 chat 函数 — 发送消息 + 自动 tool calling loop
 export async function chat(
   messages: Message[],
@@ -160,13 +195,27 @@ export async function chat(
   if (!import.meta.env.VITE_SUPABASE_URL) return { text: 'Supabase not configured.' }
   if (!import.meta.env.VITE_SUPABASE_ANON_KEY) return { text: 'Supabase not configured.' }
 
-  const skills = context?.skills
-  const allScripts = skills?.flatMap((s) => s.scripts ?? []) ?? []
+  // 渐进式披露：两阶段 — LLM 先路由选 skill，再展开匹配 skill 的 prompt + tools
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+  const skillsMeta = context?.skills?.map((s) => ({ id: s.id, name: s.name, description: s.description })) ?? []
 
-  // 合并 + 去重所有 tool
+  let skillId = skillsMeta[0]?.id ?? ''
+  if (lastUserMsg && skillsMeta.length > 1) {
+    try {
+      skillId = await routeSkill(lastUserMsg.content, skillsMeta)
+    } catch {
+      // 路由失败时静默降级，默认 QA
+    }
+    context?.onStep?.({ status: 'reasoning', content: `→ ${skillsMeta.find((s) => s.id === skillId)?.name ?? skillId}` })
+  }
+
+  const matchedSkill = context?.skills?.find((s) => s.id === skillId)
+  const matchedScripts = matchedSkill?.scripts ?? []
+
+  // 构建 tools（只包含匹配 skill 的工具）
   const seen = new Set<string>()
   const tools: SkillScript['definition'][] = []
-  for (const s of allScripts) {
+  for (const s of matchedScripts) {
     if (!seen.has(s.definition.function.name)) {
       seen.add(s.definition.function.name)
       tools.push(s.definition)
@@ -190,17 +239,19 @@ export async function chat(
     }
   }
 
-  // 构建 system prompt：skill 概览 + 完整 prompt + 规则
+  // 构建 system prompt：概览 + 匹配 skill 完整 prompt + 规则
   let systemPrompt = ''
+  const skills = context?.skills
   if (skills?.length) {
     systemPrompt += '## Available Skills\n\n'
     for (const s of skills) {
-      systemPrompt += `### ${s.name}\n${s.prompt}\n\n`
+      if (s.id === skillId) {
+        systemPrompt += `### ${s.name} (active)\n${s.prompt}\n\n`
+      } else {
+        systemPrompt += `- **${s.name}**: ${s.description}\n`
+      }
     }
-    systemPrompt += '---\n\n'
-    systemPrompt +=
-      'IMPORTANT: For EVERY user message, re-evaluate which skill above is most relevant. If no other skill clearly matches, ALWAYS use the QA skill (the default). You can switch skills between messages.'
-    systemPrompt += '\n\n'
+    systemPrompt += '\n---\n\n'
   }
   systemPrompt += BASE_RULES
 
@@ -250,8 +301,8 @@ export async function chat(
     // 并行执行所有 tool calls
     const toolResults = await executeToolCalls(
       msg.tool_calls,
-      skills,
-      allScripts,
+      matchedSkill ? [matchedSkill] : undefined,
+      matchedScripts,
       {
         email: context?.email,
         userId: context?.userId,

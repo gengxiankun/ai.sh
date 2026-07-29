@@ -3,6 +3,7 @@
 import { type FC } from 'react'
 import { Modal } from './Modal'
 import type { Skill } from '../../lib/skills/index'
+import { SkillIcon } from '../SkillIcon'
 
 type Props = {
   skills: Skill[]
@@ -31,6 +32,7 @@ export const SkillsList: FC<Props> = ({ skills, onClose }) => {
               }}
             >
               <div className="flex items-center gap-1.5">
+                <SkillIcon icon={s.icon} className="w-4 h-4 shrink-0" />
                 <span className="font-semibold text-xs shrink-0" style={{ color: 'var(--ui-text)' }}>
                   {s.name}
                 </span>

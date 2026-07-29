@@ -10,12 +10,6 @@ CREATE TABLE IF NOT EXISTS site_about (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS site_suggestions (
-  id SERIAL PRIMARY KEY,
-  questions TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS chat_messages (
   id SERIAL PRIMARY KEY,
   user_id UUID REFERENCES auth.users,
@@ -113,7 +107,6 @@ BEGIN
   ALTER TABLE IF EXISTS site_posts ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_post_tags ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS rag_documents ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS site_suggestions ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS chat_messages ENABLE ROW LEVEL SECURITY;
 END $$;
 
@@ -139,9 +132,6 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'rag_documents') THEN
     CREATE POLICY "public_read" ON rag_documents FOR SELECT USING (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_suggestions') THEN
-    CREATE POLICY "public_read" ON site_suggestions FOR SELECT USING (true);
   END IF;
 END $$;
 
@@ -207,19 +197,6 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'rag_documents') THEN
     CREATE POLICY "admin_delete" ON rag_documents FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
-  END IF;
-END $$;
-
--- ============================================
--- RLS policies: suggestions (public write)
--- ============================================
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_insert' AND tablename = 'site_suggestions') THEN
-    CREATE POLICY "public_insert" ON site_suggestions FOR INSERT WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_update' AND tablename = 'site_suggestions') THEN
-    CREATE POLICY "public_update" ON site_suggestions FOR UPDATE USING (true) WITH CHECK (true);
   END IF;
 END $$;
 

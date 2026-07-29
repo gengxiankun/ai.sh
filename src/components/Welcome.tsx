@@ -1,7 +1,7 @@
 // 欢迎页 — Landing screen（首次打开，没有命令历史时显示）
-// 包含 ASCII logo、输入框、推荐问题、更新日志滚动条
+// 包含 ASCII logo、输入框
 
-import { type FC, type RefObject } from 'react'
+import { type FC, type RefObject, useState, useRef, useEffect } from 'react'
 import type { User } from '@supabase/supabase-js'
 import type { Skill } from '../lib/skills/index'
 import type { PendingFile } from '../types'
@@ -9,12 +9,11 @@ import { CommandDropdown } from './CommandDropdown'
 import { StatusBar } from './StatusBar'
 import { InputBox } from './InputBox'
 import logoText from './logo.txt?raw'
-import { Suggestions } from './Suggestions'
-import { Paperclip, X } from 'lucide-react'
+import { SkillIcon } from './SkillIcon'
+import { Plus, X, Paperclip } from 'lucide-react'
 
 type Props = {
   input: string
-  suggestions: string[]
   dropdownCommands: string[]
   commandDescriptions: Record<string, string>
   dropdownIdx: number
@@ -38,7 +37,6 @@ type Props = {
 
 export const Welcome: FC<Props> = ({
   input,
-  suggestions,
   dropdownCommands,
   commandDescriptions,
   dropdownIdx,
@@ -59,6 +57,32 @@ export const Welcome: FC<Props> = ({
   onFileSelect,
   onFileRemove,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+  const [showSkills, setShowSkills] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+        setShowSkills(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const toggleMenu = () => {
+    if (!menuOpen && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setMenuPos({ top: r.top, left: r.left })
+    }
+    setMenuOpen(!menuOpen)
+  }
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 md:px-12 gap-4">
       {/* ASCII Logo */}
@@ -98,7 +122,6 @@ export const Welcome: FC<Props> = ({
           <StatusBar
             user={user}
             isAdmin={isAdmin}
-            skills={skills}
             onGuestClick={onGuestClick}
           />
           <InputBox
@@ -115,50 +138,12 @@ export const Welcome: FC<Props> = ({
               color: 'var(--ui-text-secondary)',
             }}
           >
-            <label className="cursor-pointer shrink-0" title="Upload .md / .pdf">
-              <Paperclip className="w-3.5 h-3.5 hover:opacity-70 transition-opacity" />
-              <input
-                type="file"
-                accept=".md,.pdf"
-                className="hidden"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0]
-                  if (!f) return
-                  e.target.value = ''
-                  const ext = f.name.split('.').pop()?.toLowerCase()
-                  if (ext === 'md') {
-                    const text = await f.text()
-                    onFileSelect({ name: f.name, type: 'md', content: text })
-                  } else if (ext === 'pdf') {
-                    const b64 = await new Promise<string>((resolve) => {
-                      const reader = new FileReader()
-                      reader.onload = () => {
-                        const result = (reader.result as string).split(',')[1]
-                        resolve(result)
-                      }
-                      reader.readAsDataURL(f)
-                    })
-                    const key = import.meta.env.VITE_SUPABASE_ANON_KEY
-                    const url = import.meta.env.VITE_SUPABASE_URL
-                      try {
-                        const res = await fetch(`${url}/functions/v1/chat`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-                          body: JSON.stringify({ parse_pdf: true, pdf_data: b64 }),
-                        })
-                        if (!res.ok) {
-                          const errText = await res.text()
-                          throw new Error(`${res.status}: ${errText}`)
-                        }
-                        const text = await res.text()
-                        onFileSelect({ name: f.name, type: 'pdf', content: text })
-                      } catch {
-                        onFileSelect({ name: f.name, type: 'pdf', content: '[PDF 提取失败]' })
-                      }
-                  }
-                }}
+            <div ref={btnRef}>
+              <Plus
+                className="w-3.5 h-3.5 cursor-pointer hover:opacity-70 transition-opacity"
+                onClick={toggleMenu}
               />
-            </label>
+            </div>
             {pendingFile && (
               <span
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
@@ -183,10 +168,100 @@ export const Welcome: FC<Props> = ({
         </div>
       </div>
 
-      {/* AI 推荐问题 */}
-      <div className="w-full max-w-3xl">
-        <Suggestions suggestions={suggestions} onSelect={onInputChange} />
-      </div>
+      {/* Plus 下拉菜单 — 渲染在 overflow-hidden 外部 */}
+      {menuOpen && (
+        <div
+          ref={menuRef}
+          className="fixed w-36 rounded-lg border py-1 shadow-lg z-50"
+          style={{
+            top: menuPos.top - 8,
+            left: menuPos.left,
+            transform: 'translateY(-100%)',
+            background: 'var(--ui-input-bg)',
+            borderColor: 'var(--ui-input-border)',
+          }}
+        >
+          <label className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:opacity-80" style={{ color: 'var(--ui-text)' }}>
+            <Paperclip className="w-3.5 h-3.5" />
+            <span>上传文件</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,.pdf"
+              className="hidden"
+              onChange={async (e) => {
+                setMenuOpen(false)
+                const f = e.target.files?.[0]
+                if (!f) return
+                e.target.value = ''
+                const ext = f.name.split('.').pop()?.toLowerCase()
+                if (ext === 'md') {
+                  const text = await f.text()
+                  onFileSelect({ name: f.name, type: 'md', content: text })
+                } else if (ext === 'pdf') {
+                  const b64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      const result = (reader.result as string).split(',')[1]
+                      resolve(result)
+                    }
+                    reader.readAsDataURL(f)
+                  })
+                  const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+                  const url = import.meta.env.VITE_SUPABASE_URL
+                  try {
+                    const res = await fetch(`${url}/functions/v1/chat`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+                      body: JSON.stringify({ parse_pdf: true, pdf_data: b64 }),
+                    })
+                    if (!res.ok) {
+                      const errText = await res.text()
+                      throw new Error(`${res.status}: ${errText}`)
+                    }
+                    const text = await res.text()
+                    onFileSelect({ name: f.name, type: 'pdf', content: text })
+                  } catch {
+                    onFileSelect({ name: f.name, type: 'pdf', content: '[PDF 提取失败]' })
+                  }
+                }
+              }}
+            />
+          </label>
+          <div
+            className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:opacity-80 relative"
+            style={{ color: 'var(--ui-text)' }}
+            onMouseEnter={() => setShowSkills(true)}
+            onMouseLeave={() => setShowSkills(false)}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>技能</span>
+            {showSkills && skills.length > 0 && (
+              <div
+                className="absolute left-full top-0 ml-1 w-56 rounded-lg border py-1 shadow-lg z-50"
+                style={{
+                  background: 'var(--ui-input-bg)',
+                  borderColor: 'var(--ui-input-border)',
+                }}
+              >
+                {skills.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-2 px-3 py-1.5"
+                    title={s.description}
+                  >
+                    <SkillIcon icon={s.icon} className="w-3 h-3 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium" style={{ color: 'var(--ui-text)' }}>{s.name}</div>
+                      <div className="text-[9px] truncate" style={{ color: 'var(--ui-text-secondary)' }}>{s.description}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

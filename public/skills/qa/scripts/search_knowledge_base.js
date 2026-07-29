@@ -5,11 +5,12 @@ execute = async function(args, context) {
 
   // Get embedding via Jina (through our worker)
   var workerUrl = context.env.WORKER_URL
+  var supabaseKey = context.env.SUPABASE_ANON_KEY
   if (!workerUrl) return 'Knowledge base search unavailable.'
 
   var embedRes = await fetch(workerUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + supabaseKey },
     body: JSON.stringify({
       messages: [{ role: 'user', content: query }],
       stream: false,
@@ -23,7 +24,6 @@ execute = async function(args, context) {
 
   // Search Supabase RPC
   var supabaseUrl = context.env.SUPABASE_URL
-  var supabaseKey = context.env.SUPABASE_ANON_KEY
   var searchRes = await fetch(supabaseUrl + '/rest/v1/rpc/search_rag_docs', {
     method: 'POST',
     headers: {

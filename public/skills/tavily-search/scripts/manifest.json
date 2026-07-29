@@ -1,0 +1,10 @@
+{
+  "tavily_search": {
+    "file": "tavily_search.js",
+    "description": "搜索互联网获取实时信息",
+    "params": {
+      "query": "搜索关键词",
+      "max_results": "最大结果数，默认5"
+    }
+  }
+}

@@ -42,6 +42,12 @@ Deno.serve(async (req: Request) => {
     pdf_data?: string
     scrape?: boolean
     url?: string
+    proxy?: boolean
+    proxy_skill_id?: string
+    proxy_url?: string
+    proxy_method?: string
+    proxy_headers?: Record<string, string>
+    proxy_body?: string
   }
 
   // ==================== PDF 文本提取 ====================
@@ -272,6 +278,36 @@ Deno.serve(async (req: Request) => {
       status: res.status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
+  }
+
+  // ==================== 通用代理 — Skill 外部 API 调用 ====================
+  if (body.proxy && body.proxy_url) {
+    const headers: Record<string, string> = { ...body.proxy_headers }
+    // 替换 __SECRET__ 占位符 → Deno.env.get("SKILL_<id>_<key>")
+    if (body.proxy_skill_id) {
+      for (const [key, value] of Object.entries(headers)) {
+        if (value === "__SECRET__") {
+          const secretKey = `SKILL_${body.proxy_skill_id}_${key}`.toUpperCase().replace(/-/g, "_")
+          headers[key] = Deno.env.get(secretKey) ?? ""
+        }
+      }
+    }
+    try {
+      const res = await fetch(body.proxy_url, {
+        method: body.proxy_method ?? "GET",
+        headers,
+        body: body.proxy_body ?? undefined,
+      })
+      return new Response(res.body, {
+        status: res.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: "Proxy error", detail: String(e) }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
   }
 
   // ==================== Chat 代理 ====================

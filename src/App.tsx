@@ -13,14 +13,12 @@ import {
   deleteDocumentById,
 } from './lib/rag'
 import { useAuth } from './hooks/useAuth'
-import { useSuggestions } from './hooks/useSuggestions'
 import { getAuthToken } from './lib/api'
 import { Terminal } from './components/Terminal'
 import { Welcome } from './components/Welcome'
 import { AboutEdit } from './components/modals/AboutEdit'
 import { PostForm } from './components/modals/PostForm'
 import { KBForm } from './components/modals/KBForm'
-import { SkillsList } from './components/modals/SkillsList'
 import type {
   Action,
   Line,
@@ -93,7 +91,6 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   register: 'create a new account',
   whoami: 'show current user',
   logout: 'sign out',
-  skills: 'view AI skills',
   'knowledge-base': 'RAG knowledge base search & upload',
 }
 
@@ -104,7 +101,6 @@ const ALL_COMMANDS = [
   'register',
   'whoami',
   'logout',
-  'skills',
   'knowledge-base',
 ]
 
@@ -133,13 +129,11 @@ export default function App() {
   const [dropdownIdx, setDropdownIdx] = useState(-1)
   const [hoverIdx, setHoverIdx] = useState(-1)
   const [historyIdx, setHistoryIdx] = useState(-1)
-  const [dataVersion, setDataVersion] = useState(0)
+  const [_dataVersion, setDataVersion] = useState(0)
 
   // Skill 状态
   const [skills, setSkills] = useState<Skill[]>([])
   const skillsRef = useRef<Skill[]>([])
-  const [skillModal, setSkillModal] = useState(false)
-  const skillModalRef = useRef(false)
   // 模型信息（从 Edge Function 获取）
   const [modelInfo, setModelInfo] = useState<{ provider: string; model: string } | null>(null)
 
@@ -147,7 +141,6 @@ export default function App() {
   const [pendingFile, setPendingFile] = useState<PendingFile | null>(null)
 
   skillsRef.current = skills
-  skillModalRef.current = skillModal
 
   // Admin 弹层状态
   const [adminSection, setAdminSection] = useState<string | null>(null)
@@ -180,9 +173,6 @@ export default function App() {
   historyRef.current = history
   historyIdxRef.current = historyIdx
   dropdownIdxRef.current = dropdownIdx
-
-  // AI 推荐问题
-  const suggestions = useSuggestions(dataVersion)
 
   // ==================== 副作用 ====================
 
@@ -530,13 +520,6 @@ export default function App() {
       // /about — 查看关于（走通用 COMMANDS handler）
     }
 
-    // ==================== /skills — 查看 AI Skills ====================
-    if (lower === 'skills') {
-      // /skills — 打开 skills 列表弹窗
-      setSkillModal(true)
-      return
-    }
-
     // ==================== /knowledge-base — 知识库管理 ====================
     if (lower === 'knowledge-base') {
       const subcmd = args[0]?.toLowerCase()
@@ -701,7 +684,7 @@ export default function App() {
         ...prev,
         {
           input: cmd,
-          output: `command not found: /${name}\nType /skills to see available skills.`,
+          output: `command not found: /${name}`,
         },
       ])
       return
@@ -1213,7 +1196,6 @@ export default function App() {
       ) : (
         <Welcome
           input={input}
-          suggestions={suggestions}
           dropdownCommands={dropdownCommands}
           commandDescriptions={COMMAND_DESCRIPTIONS}
           dropdownIdx={dropdownIdx}
@@ -1286,13 +1268,6 @@ export default function App() {
           onSaved={(message) => {
             setHistory((prev) => [...prev, { input: '', output: message }])
           }}
-        />
-      )}
-
-      {skillModal && (
-        <SkillsList
-          skills={skills}
-          onClose={() => setSkillModal(false)}
         />
       )}
 

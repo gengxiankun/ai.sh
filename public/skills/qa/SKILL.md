@@ -1,5 +1,5 @@
 ---
-name: QA
+name: Q&A
 description: 通用问答助手（默认 Skill）
 triggers: 简介, 经历, 技能, 项目, 工作, 你叫什么, 你是谁, 你的名字,
     登录, 登陆, 注册, login, register, signup, sign in, sign up, 账号, 密码,

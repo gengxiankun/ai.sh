@@ -1,5 +1,6 @@
 // Skill 系统 — 加载器 + 类型定义
 // Skill 是 Claude Code 风格的模块化能力单元：SKILL.md 定义 + scripts 工具脚本
+// 所有 skill（内置 + 插件）统一从 public/skills/registry.json 加载
 
 import fm from 'front-matter'
 import type { SkillScript } from './runner'
@@ -9,30 +10,54 @@ export type Skill = {
   id: string
   name: string
   description: string
+  icon: string
   triggers: string[]
   prompt: string
   scripts: SkillScript[] | null
 }
 
-// 公开 skill 目录（对应 public/skills/ 下的子目录）
-const publicSkillDirs = ['qa', 'scraper']
-// 仅管理员可加载的 skill 目录
-const adminSkillDirs = ['admin']
-
 // Skill 缓存 — 避免重复 fetch（区分是否含 admin skill）
 let skillCache: Skill[] | null = null
 let adminSkillCache: Skill[] | null = null
 
+type RegistryEntry = { version?: string; admin?: boolean; icon?: string }
+type LocalRegistry = { skills: Record<string, RegistryEntry> }
+
+// 读取本地插件注册表，获取已安装的 skill 列表
+// includeAdmin=false 时过滤掉 admin:true 的 skill
+async function getInstalledSkillDirs(includeAdmin: boolean): Promise<string[]> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}skills/registry.json`)
+    if (!res.ok) return []
+    const data = (await res.json()) as LocalRegistry
+    return Object.entries(data.skills || {})
+      .filter(([, entry]) => includeAdmin || !entry.admin)
+      .map(([id]) => id)
+  } catch {
+    return []
+  }
+}
+
 // 加载所有 skill（解析 SKILL.md + manifest.json + scripts）
-// includeAdmin=true 时额外加载 admin skill（仅管理员）
+// includeAdmin=true 时额外加载 admin 标记的 skill（仅管理员）
 export async function fetchSkills(includeAdmin = false): Promise<Skill[]> {
   const cache = includeAdmin ? adminSkillCache : skillCache
   if (cache) return cache
 
+  // 读取注册表获取 icon 映射
+  const iconMap: Record<string, string> = {}
+  try {
+    const regRes = await fetch(`${import.meta.env.BASE_URL}skills/registry.json`)
+    if (regRes.ok) {
+      const reg = (await regRes.json()) as LocalRegistry
+      for (const [id, entry] of Object.entries(reg.skills || {})) {
+        if (entry.icon) iconMap[id] = entry.icon
+      }
+    }
+  } catch { /* 注册表不存在时 icon 为空 */ }
+
   const skills: Skill[] = []
-  const skillDirs = includeAdmin
-    ? [...publicSkillDirs, ...adminSkillDirs]
-    : publicSkillDirs
+  const skillDirs = await getInstalledSkillDirs(includeAdmin)
 
   for (const dir of skillDirs) {
     try {
@@ -107,6 +132,7 @@ export async function fetchSkills(includeAdmin = false): Promise<Skill[]> {
         id: dir,
         name: attributes.name || dir,
         description: attributes.description || '',
+        icon: iconMap[dir] || '',
         triggers: attributes.triggers
           ?.split(',')
           .map((s) => s.trim()) ?? [],

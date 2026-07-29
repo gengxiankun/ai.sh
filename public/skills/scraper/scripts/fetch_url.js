@@ -4,12 +4,13 @@ execute = async function(args, context) {
   if (!url) return 'No URL provided.'
 
   var workerUrl = context.env.WORKER_URL
+  var key = context.env.SUPABASE_ANON_KEY
   if (!workerUrl) return 'Edge function not configured.'
 
   try {
     var res = await fetch(workerUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
       body: JSON.stringify({ scrape: true, url: url })
     })
 

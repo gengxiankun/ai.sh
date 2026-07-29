@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts"
-import { writeFileSync, readFileSync, existsSync } from "node:fs"
+import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { execSync } from "node:child_process"
+import { join } from "node:path"
 
 function supabase(args: string): string {
   return execSync(`npx supabase ${args}`, {
@@ -357,6 +358,99 @@ VITE_ADMIN_EMAIL=${adminEmail}
     fs.stop("Edge Function 已部署")
   } catch {
     fs.stop("部署失败，请稍后手动执行:\n  npx supabase functions deploy chat")
+  }
+
+  // ==================== Step 14: Skill 插件选择 ====================
+  const REGISTRY_URL = "https://raw.githubusercontent.com/gengxiankun/plugins.ai.sh/main"
+  const SKILLS_DIR = join(import.meta.dirname, "..", "public", "skills")
+  const REGISTRY_FILE = join(SKILLS_DIR, "registry.json")
+
+  type RemoteSkillItem = { id: string; name: string; description: string; icon?: string; version: string; admin?: boolean }
+
+  const nss = p.spinner()
+  nss.start("获取可用 Skill 列表...")
+  let remoteSkills: RemoteSkillItem[] = []
+  try {
+    const regRes = await fetch(`${REGISTRY_URL}/index.json`)
+    if (regRes.ok) {
+      const data = (await regRes.json()) as { skills: RemoteSkillItem[] }
+      remoteSkills = data.skills || []
+    }
+    nss.stop(`${remoteSkills.length} 个可用`)
+  } catch {
+    nss.stop("获取失败，跳过 Skill 选择")
+  }
+
+  if (remoteSkills.length > 0) {
+    const selected = await p.multiselect({
+      message: "选择要安装的 Skill（空格勾选/取消，回车确认）",
+      initialValues: remoteSkills.map((s) => s.id),
+      options: remoteSkills.map((s) => ({
+        value: s.id,
+        label: `${s.name}${s.admin ? " [管理员]" : ""}`,
+        hint: `${s.description} · v${s.version}`,
+      })),
+    })
+
+    if (!p.isCancel(selected) && (selected as string[]).length > 0) {
+      const chosen = new Set(selected as string[])
+      const toInstall = remoteSkills.filter((s) => chosen.has(s.id))
+      const reg: Record<string, { icon?: string; version: string; source: string; admin?: boolean }> = {}
+
+      for (const s of toInstall) {
+        const skillDir = join(SKILLS_DIR, s.id)
+        if (existsSync(skillDir) && existsSync(join(skillDir, "SKILL.md"))) {
+          reg[s.id] = { icon: s.icon, version: s.version, source: `${REGISTRY_URL}/skills/${s.id}`, admin: s.admin }
+          continue
+        }
+
+        const ss = p.spinner()
+        ss.start(`安装 ${s.name}...`)
+
+        if (existsSync(skillDir)) rmSync(skillDir, { recursive: true, force: true })
+        mkdirSync(skillDir, { recursive: true })
+        mkdirSync(join(skillDir, "scripts"), { recursive: true })
+
+        const base = `${REGISTRY_URL}/skills/${s.id}`
+        try {
+          // SKILL.md
+          const mdRes = await fetch(`${base}/SKILL.md`)
+          if (!mdRes.ok) throw new Error("SKILL.md 下载失败")
+          writeFileSync(join(skillDir, "SKILL.md"), await mdRes.text())
+
+          // manifest.json + scripts
+          try {
+            const mRes = await fetch(`${base}/scripts/manifest.json`)
+            if (mRes.ok) {
+              const mText = await mRes.text()
+              writeFileSync(join(skillDir, "scripts", "manifest.json"), mText)
+              const m = JSON.parse(mText) as Record<string, { file: string } | string>
+              for (const f of Object.values(m)) {
+                const file = typeof f === "string" ? f : f.file
+                try {
+                  const sRes = await fetch(`${base}/scripts/${file}`)
+                  if (sRes.ok) writeFileSync(join(skillDir, "scripts", file), await sRes.text())
+                } catch { /* skip individual script failures */ }
+              }
+            }
+          } catch { /* no manifest, ok */ }
+
+          reg[s.id] = { icon: s.icon, version: s.version, source: base, admin: s.admin }
+          ss.stop(`${s.name} v${s.version} 安装完成`)
+        } catch (e) {
+          ss.stop(`${s.name} 安装失败: ${e}`)
+        }
+      }
+
+      // 写入 registry.json
+      if (Object.keys(reg).length > 0) {
+        const existing = existsSync(REGISTRY_FILE)
+          ? JSON.parse(readFileSync(REGISTRY_FILE, "utf-8")).skills || {}
+          : {}
+        Object.assign(existing, reg)
+        writeFileSync(REGISTRY_FILE, JSON.stringify({ skills: existing }, null, 2))
+      }
+    }
   }
 
   // ==================== 完成 ====================
