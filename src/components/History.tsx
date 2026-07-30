@@ -5,6 +5,7 @@ import { type FC } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
 import type { Line } from '../types'
 import { StepBadge } from './StepBadge'
 import { ActionButton } from './ActionButton'
@@ -70,7 +71,7 @@ export const History: FC<Props> = ({ history, isAdmin, onActionClick }) => {
                 className="text-sm mt-1.5 leading-relaxed prose prose-sm max-w-none dark:prose-invert"
                 style={{ color: 'var(--ui-text-secondary)' }}
               >
-                <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]}>
+                <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                   {line.output}
                 </ReactMarkdown>
               </div>

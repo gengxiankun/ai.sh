@@ -4,6 +4,7 @@ import { Pencil, Trash2, Clipboard } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
 import type { Action } from '../types'
 
 type Props = {
@@ -94,7 +95,7 @@ export const ActionButton: FC<Props> = ({ action, isAdmin, onClick }) => {
       {expanded && action.detail && (
         <div className="w-full mt-2 max-h-[60vh] overflow-y-auto rounded-md border p-3" style={{ background: 'var(--ui-bg)', borderColor: 'var(--ui-input-border)' }}>
           <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert" style={{ color: 'var(--ui-text-secondary)' }}>
-            <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]}>{action.detail}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} rehypePlugins={[rehypeHighlight]}>{action.detail}</ReactMarkdown>
           </div>
         </div>
       )}
