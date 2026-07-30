@@ -97,6 +97,7 @@ export const Terminal: FC<Props> = ({
       <History
         history={history}
         isAdmin={isAdmin}
+        userEmail={user?.email}
         onActionClick={onActionClick}
       />
       <div ref={bottomRef} />
