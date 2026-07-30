@@ -23,6 +23,7 @@ type Props = {
   isAdmin: boolean
   skills: Skill[]
   modelInfo: { provider: string; model: string } | null
+  inviteInfo: { used: number; quota: number } | null
   pendingFile: PendingFile | null
   textareaRef: RefObject<HTMLTextAreaElement | null>
   onInputChange: (v: string) => void
@@ -46,6 +47,7 @@ export const Welcome: FC<Props> = ({
   isAdmin,
   skills,
   modelInfo,
+  inviteInfo,
   pendingFile,
   textareaRef,
   onInputChange,
@@ -163,6 +165,7 @@ export const Welcome: FC<Props> = ({
               {modelInfo?.provider
               ? `${modelInfo.provider} · ${modelInfo.model}`
               : modelInfo?.model ?? ''}
+              {inviteInfo && ` · 词元 ${inviteInfo.used.toLocaleString()}/${inviteInfo.quota.toLocaleString()}`}
             </span>
           </div>
         </div>

@@ -4,18 +4,23 @@
 -- Tables
 -- ============================================
 
-CREATE TABLE IF NOT EXISTS site_about (
-  id SERIAL PRIMARY KEY,
-  content TEXT NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS chat_messages (
   id SERIAL PRIMARY KEY,
   user_id UUID REFERENCES auth.users,
   role TEXT NOT NULL DEFAULT 'user',
   content TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS invite_codes (
+  id          SERIAL PRIMARY KEY,
+  token       TEXT UNIQUE NOT NULL,
+  description TEXT DEFAULT '',
+  token_quota INT NOT NULL DEFAULT 5000,
+  token_used  INT NOT NULL DEFAULT 0,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_by  TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
@@ -101,7 +106,7 @@ $$;
 -- ============================================
 DO $$
 BEGIN
-  ALTER TABLE IF EXISTS site_about ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS invite_codes ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_categories ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_tags ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_posts ENABLE ROW LEVEL SECURITY;
@@ -115,8 +120,8 @@ END $$;
 -- ============================================
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_about') THEN
-    CREATE POLICY "public_read" ON site_about FOR SELECT USING (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'invite_codes') THEN
+    CREATE POLICY "public_read" ON invite_codes FOR SELECT USING (true);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'site_categories') THEN
     CREATE POLICY "public_read" ON site_categories FOR SELECT USING (true);
@@ -140,11 +145,15 @@ END $$;
 -- ============================================
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'site_about') THEN
-    CREATE POLICY "admin_insert" ON site_about FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  -- invite_codes
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'invite_codes') THEN
+    CREATE POLICY "admin_insert" ON invite_codes FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'site_about') THEN
-    CREATE POLICY "admin_update" ON site_about FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL') WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'invite_codes') THEN
+    CREATE POLICY "admin_update" ON invite_codes FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'invite_codes') THEN
+    CREATE POLICY "admin_delete" ON invite_codes FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
   END IF;
 
   -- site_categories
@@ -212,3 +221,22 @@ BEGIN
     CREATE POLICY "owner_insert" ON chat_messages FOR INSERT WITH CHECK (auth.uid() = user_id);
   END IF;
 END $$;
+
+-- ============================================
+-- RPC: consume_invite (原子消耗邀请码词元)
+-- ============================================
+CREATE OR REPLACE FUNCTION consume_invite(p_token TEXT, p_usage INT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_used INT;
+  v_quota INT;
+BEGIN
+  SELECT token_used, token_quota INTO v_used, v_quota
+  FROM invite_codes WHERE token = p_token AND expires_at > NOW();
+  IF NOT FOUND THEN RETURN FALSE; END IF;
+  IF v_used + p_usage > v_quota THEN RETURN FALSE; END IF;
+  UPDATE invite_codes SET token_used = v_used + p_usage WHERE token = p_token;
+  RETURN TRUE;
+END;
+$$;

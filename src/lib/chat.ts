@@ -150,8 +150,8 @@ async function executeToolCalls(
 async function routeSkill(
   userMessage: string,
   skillsMeta: { id: string; name: string; description: string }[],
-): Promise<string> {
-  if (skillsMeta.length <= 1) return skillsMeta[0]?.id ?? ''
+): Promise<{ id: string; usage: number }> {
+  if (skillsMeta.length <= 1) return { id: skillsMeta[0]?.id ?? '', usage: 0 }
 
   const skillList = skillsMeta
     .map((s) => `- **${s.name}** (id: ${s.id}): ${s.description}`)
@@ -173,11 +173,12 @@ Respond with ONLY the skill id (one word, e.g. "qa"), nothing else.`
     false,
   )
   const data = await res.json()
+  const usage = data.usage?.total_tokens || 0
   const choice = data.choices?.[0]?.message?.content?.trim()?.toLowerCase()
   const skillId = choice?.replace(/^(the |skill[ :])/i, '')?.split(/\s+/)[0] ?? ''
 
   const match = skillsMeta.find((s) => s.id === skillId)
-  return match?.id ?? skillsMeta[0].id
+  return { id: match?.id ?? skillsMeta[0].id, usage }
 }
 
 // 主 chat 函数 — 发送消息 + 自动 tool calling loop
@@ -191,18 +192,21 @@ export async function chat(
     fallbackTools?: unknown[]
     onStep?: (step: ChatStep) => void
   },
-): Promise<{ text: string; stream?: ReadableStream<Uint8Array> }> {
-  if (!import.meta.env.VITE_SUPABASE_URL) return { text: 'Supabase not configured.' }
-  if (!import.meta.env.VITE_SUPABASE_ANON_KEY) return { text: 'Supabase not configured.' }
+): Promise<{ text: string; stream?: ReadableStream<Uint8Array>; usage: number }> {
+  if (!import.meta.env.VITE_SUPABASE_URL) return { text: 'Supabase not configured.', usage: 0 }
+  if (!import.meta.env.VITE_SUPABASE_ANON_KEY) return { text: 'Supabase not configured.', usage: 0 }
 
   // 渐进式披露：两阶段 — LLM 先路由选 skill，再展开匹配 skill 的 prompt + tools
   const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
   const skillsMeta = context?.skills?.map((s) => ({ id: s.id, name: s.name, description: s.description })) ?? []
 
+  let totalUsage = 0
   let skillId = skillsMeta[0]?.id ?? ''
   if (lastUserMsg && skillsMeta.length > 1) {
     try {
-      skillId = await routeSkill(lastUserMsg.content, skillsMeta)
+      const routeResult = await routeSkill(lastUserMsg.content, skillsMeta)
+      skillId = routeResult.id
+      totalUsage += routeResult.usage
     } catch {
       // 路由失败时静默降级，默认 QA
     }
@@ -280,11 +284,12 @@ export async function chat(
 
     const res = await callAPI(payload, toolArgs)
     const data = await res.json()
+    totalUsage += data.usage?.total_tokens || 0
     const msg = data.choices[0].message
 
     // 没有 tool_calls 或无可用工具 → LLM 认为任务完成
     if (!msg.tool_calls?.length || !hasTools) {
-      if (msg.content) return { text: msg.content }
+      if (msg.content) return { text: msg.content, usage: totalUsage }
       break
     }
 
@@ -318,18 +323,19 @@ export async function chat(
 
   // 流式返回最终响应
   const streamRes = await callAPI(payload, undefined, true)
-  return { text: '', stream: streamRes.body! }
+  return { text: '', stream: streamRes.body!, usage: totalUsage }
 }
 
 // 读取 SSE 流 — 解析 data: {...} 格式，逐块回调
 export async function readStream(
   stream: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
-): Promise<string> {
+): Promise<{ text: string; usage: number }> {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let full = ''
   let buffer = ''
+  let usage = 0
 
   while (true) {
     const { done, value } = await reader.read()
@@ -348,6 +354,7 @@ export async function readStream(
             full += text
             onChunk(full)
           }
+          if (json.usage?.total_tokens) usage = json.usage.total_tokens
         } catch {
           // 跳过解析失败的行
         }
@@ -355,5 +362,5 @@ export async function readStream(
     }
   }
 
-  return full
+  return { text: full, usage }
 }

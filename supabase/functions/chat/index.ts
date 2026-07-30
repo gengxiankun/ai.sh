@@ -48,6 +48,7 @@ Deno.serve(async (req: Request) => {
     proxy_method?: string
     proxy_headers?: Record<string, string>
     proxy_body?: string
+    max_tokens?: number
   }
 
   // ==================== PDF 文本提取 ====================
@@ -314,10 +315,13 @@ Deno.serve(async (req: Request) => {
   const chatBody: Record<string, unknown> = {
     model: LLM_MODEL,
     messages: body.messages,
-    max_tokens: LLM_MAX_TOKENS,
+    max_tokens: body.max_tokens ?? LLM_MAX_TOKENS,
   }
   if (body.tools) chatBody.tools = body.tools
-  if (body.stream) chatBody.stream = true
+  if (body.stream) {
+    chatBody.stream = true
+    chatBody.stream_options = { include_usage: true }
+  }
 
   const res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
     method: "POST",

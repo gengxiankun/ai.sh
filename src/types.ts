@@ -24,6 +24,7 @@ export type Action = {
   // admin 内联操作
   _delete?: { table: string; title: string; col?: string }
   _edit?: { table: string; title: string; id?: number }
+  _copy?: string
   inlineActions?: Action[]
 }
 

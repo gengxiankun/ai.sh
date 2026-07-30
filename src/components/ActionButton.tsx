@@ -1,7 +1,7 @@
 // Action 按钮组件 — 支持链接跳转 / 展开详情 / admin 内联操作
 
 import { type FC } from 'react'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, Clipboard } from 'lucide-react'
 import type { Action } from '../types'
 
 type Props = {
@@ -135,6 +135,8 @@ export const ActionButton: FC<Props> = ({ action, isAdmin, onClick }) => {
             >
               {ia._edit ? (
                 <Pencil className="w-3 h-3" />
+              ) : ia._copy ? (
+                <Clipboard className="w-3 h-3" />
               ) : (
                 <Trash2 className="w-3 h-3" />
               )}

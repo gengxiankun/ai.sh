@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react'
 import { getSupabase } from './lib/supabase'
 import { chat, readStream } from './lib/chat'
 import { TOOLS } from './store/commands'
-import { fetchAbout, fetchPosts, fetchCategories, fetchTags } from './store/api'
+import { fetchPosts, fetchCategories, fetchTags } from './store/api'
 import { fetchSkills } from './lib/skills/index'
 import {
   searchDocuments,
@@ -14,11 +14,12 @@ import {
 } from './lib/rag'
 import { useAuth } from './hooks/useAuth'
 import { getAuthToken } from './lib/api'
+import { verifyInvite, consumeInvite, listInvites } from './lib/invite'
 import { Terminal } from './components/Terminal'
 import { Welcome } from './components/Welcome'
-import { AboutEdit } from './components/modals/AboutEdit'
 import { PostForm } from './components/modals/PostForm'
 import { KBForm } from './components/modals/KBForm'
+import { InviteForm } from './components/modals/InviteForm'
 import type {
   Action,
   Line,
@@ -31,11 +32,6 @@ import './App.css'
 
 // 终端命令处理 — 返回字符串或 { output, actions }
 const COMMANDS: Record<string, (args: string[]) => Promise<CommandResult>> = {
-  about: async () => {
-    const text = await fetchAbout()
-    return text || 'No content yet.'
-  },
-
   posts: async () => {
     const [posts, categories, tags] = await Promise.all([
       fetchPosts(),
@@ -85,23 +81,47 @@ const COMMANDS: Record<string, (args: string[]) => Promise<CommandResult>> = {
 
 // 命令描述 — 用于 autocomplete dropdown 提示
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
-  about: 'view my profile, skills & work experience',
-  posts: 'browse my posts (click to expand)',
-  login: 'sign in with email & password',
-  register: 'create a new account',
-  whoami: 'show current user',
-  logout: 'sign out',
-  'knowledge-base': 'RAG knowledge base search & upload',
+  register: '注册',
+  login: '登录',
+  logout: '登出',
+  posts: '帖子',
+  'knowledge-base': '知识库',
+  'invite-code': '邀请码',
+}
+
+// 子命令（在下拉列表中可见）
+const VISIBLE_SUBCOMMANDS = [
+  'invite-code add',
+  'invite-code verify',
+  'posts add',
+  'knowledge-base search',
+  'knowledge-base delete',
+]
+
+// 仅管理员可见的子命令
+const ADMIN_SUBCOMMANDS: string[] = [
+  'invite-code add',
+  'posts add',
+  'knowledge-base delete',
+]
+
+// 子命令描述
+const SUBCOMMAND_DESCRIPTIONS: Record<string, string> = {
+  'invite-code add': '创建邀请码',
+  'invite-code verify': '验证邀请码',
+  'posts add': '创建帖子',
+  'knowledge-base search': '搜索知识库',
 }
 
 // 所有可用命令（含系统命令）
 const ALL_COMMANDS = [
-  ...Object.keys(COMMANDS),
-  'login',
   'register',
-  'whoami',
+  'login',
   'logout',
   'knowledge-base',
+  'invite-code',
+  ...Object.keys(COMMANDS),
+  ...VISIBLE_SUBCOMMANDS,
 ]
 
 export default function App() {
@@ -119,6 +139,16 @@ export default function App() {
     chatHistoryRef,
     handlePasswordKey,
   } = useAuth()
+
+  // 根据登录状态和权限过滤可见命令
+  const loggedIn = !!user
+  const allDescriptions = { ...COMMAND_DESCRIPTIONS, ...SUBCOMMAND_DESCRIPTIONS }
+  const visibleCommands = ALL_COMMANDS.filter((cmd) => {
+    if (loggedIn && (cmd === 'login' || cmd === 'register')) return false
+    if (!loggedIn && cmd === 'logout') return false
+    if (!isAdmin && ADMIN_SUBCOMMANDS.includes(cmd)) return false
+    return true
+  })
 
   // ==================== 终端状态 ====================
   const [history, setHistory] = useState<Line[]>([
@@ -140,11 +170,25 @@ export default function App() {
   // 待上传文件
   const [pendingFile, setPendingFile] = useState<PendingFile | null>(null)
 
+  // 邀请码状态
+  const [inviteToken, setInviteToken] = useState(() => localStorage.getItem('invite_token') || '')
+  const [inviteChecked, setInviteChecked] = useState(false)
+  const [inviteInfo, setInviteInfo] = useState<{ used: number; quota: number } | null>(null)
+  const [showInviteForm, setShowInviteForm] = useState<'create' | 'verify' | 'edit' | null>(null)
+  const [inviteEditId, setInviteEditId] = useState<number | null>(null)
+  const [inviteEditDesc, setInviteEditDesc] = useState('')
+  const [inviteEditQuota, setInviteEditQuota] = useState(5000)
+  const [inviteEditToken, setInviteEditToken] = useState('')
+  const [inviteEditDays, setInviteEditDays] = useState(7)
+  const inviteTokenRef = useRef(inviteToken)
+  const showInviteFormRef = useRef(showInviteForm)
+  inviteTokenRef.current = inviteToken
+  showInviteFormRef.current = showInviteForm
+
   skillsRef.current = skills
 
   // Admin 弹层状态
   const [adminSection, setAdminSection] = useState<string | null>(null)
-  const [adminText, setAdminText] = useState('')
   const [postTitle, setPostTitle] = useState('')
   const [postDetail, setPostDetail] = useState('')
   const [postEditDocId, setPostEditDocId] = useState<number | null>(null)
@@ -212,13 +256,44 @@ export default function App() {
     const el = containerRef.current
     if (!el) return
     const cb = () => {
-      if (adminSectionRef.current) return
+      if (adminSectionRef.current || showInviteFormRef.current) return
       const inp = el.querySelector('input')
       if (inp && document.activeElement !== inp) inp.focus()
     }
     el.addEventListener('click', cb)
     return () => el.removeEventListener('click', cb)
   }, [])
+
+  // 检测 URL 中的邀请码
+  useEffect(() => {
+    if (inviteChecked) return
+    const p = new URLSearchParams(window.location.search)
+    const urlToken = p.get('invite')
+    if (!urlToken) { setInviteChecked(true); return }
+    verifyInvite(urlToken).then((inv) => {
+      if (inv) {
+        localStorage.setItem('invite_token', urlToken)
+        setInviteToken(urlToken)
+        // 清理 URL 参数
+        const u = new URL(window.location.href)
+        u.searchParams.delete('invite')
+        window.history.replaceState({}, '', u.toString())
+      }
+      setInviteChecked(true)
+    }).catch(() => setInviteChecked(true))
+  }, [])
+
+  // 刷新邀请码用量
+  useEffect(() => {
+    if (!inviteToken) { setInviteInfo(null); return }
+    const refresh = () => verifyInvite(inviteToken).then((inv) => {
+      if (inv) setInviteInfo({ used: inv.token_used, quota: inv.token_quota })
+      else { setInviteInfo(null); localStorage.removeItem('invite_token'); setInviteToken('') }
+    }).catch(() => {})
+    refresh()
+    const id = setInterval(refresh, 10000)
+    return () => clearInterval(id)
+  }, [inviteToken])
 
   // 从 Edge Function 获取模型信息
   useEffect(() => {
@@ -246,10 +321,12 @@ export default function App() {
     if (passwordModeRef.current) {
       setSuggestion('')
     } else if (input.startsWith('/')) {
-      const query = input.slice(1)
-      const match = ALL_COMMANDS.find(
-        (n) => n.startsWith(query.toLowerCase()) && n !== query.toLowerCase(),
-      )
+      const query = input.slice(1).toLowerCase()
+      const hasSpace = input.includes(' ')
+      const match = visibleCommands.find((n) => {
+        if (hasSpace ? !n.includes(' ') : n.includes(' ')) return false
+        return n.startsWith(query) && n !== query
+      })
       setSuggestion(match ? '/' + match : '')
     } else {
       setSuggestion('')
@@ -258,9 +335,13 @@ export default function App() {
     setHoverIdx(-1)
   }, [input])
 
-  // 当前下拉候选命令
+  // 当前下拉候选命令（有空格时只显示子命令）
   const dropdownCommands = input.startsWith('/')
-    ? ALL_COMMANDS.filter((n) => n.startsWith(input.slice(1).toLowerCase()))
+    ? visibleCommands.filter((n) => {
+        const hasSpace = input.includes(' ')
+        if (hasSpace) return n.includes(' ') && n.startsWith(input.slice(1).toLowerCase())
+        return !n.includes(' ') && n.startsWith(input.slice(1).toLowerCase())
+      })
     : []
 
   dropdownRef.current = dropdownCommands
@@ -270,6 +351,12 @@ export default function App() {
 
   // ==================== showDetail — Action 点击处理 ====================
   const showDetail = async (action: Action) => {
+    // 复制
+    if (action._copy) {
+      await navigator.clipboard.writeText(action._copy)
+      setHistory((prev) => [...prev, { input: '', output: '已复制到剪贴板' }])
+      return
+    }
     // Admin 删除
     if (action._delete && isAdminRef.current) {
       const col = action._delete.col || 'title'
@@ -307,6 +394,21 @@ export default function App() {
         ...prev,
         { input: '', output: `Deleted "${action._delete!.title}"` },
       ])
+      return
+    }
+    // Admin 编辑 Invite
+    if (action._edit && isAdminRef.current && action._edit.table === 'invite_codes') {
+      const item = await listInvites().then((list) => list.find((inv) => inv.id === action._edit!.id))
+      if (item) {
+        const remainingDays = Math.max(1, Math.ceil((new Date(item.expires_at).getTime() - Date.now()) / 86400000))
+        setInviteEditId(item.id)
+        setInviteEditDesc(item.description || '')
+        setInviteEditQuota(item.token_quota)
+        setInviteEditToken(item.token)
+        setInviteEditDays(remainingDays)
+        setShowInviteForm(null) // reset first
+        setTimeout(() => setShowInviteForm('edit'), 0)
+      }
       return
     }
     // Admin 编辑 Post
@@ -415,23 +517,6 @@ export default function App() {
       return
     }
 
-    // ==================== /whoami — 查看当前用户 ====================
-    if (lower === 'whoami') {
-      const u = userRef.current
-      if (!u) {
-        setHistory((prev) => [
-          ...prev,
-          { input: cmd, output: 'Not logged in.' },
-        ])
-      } else {
-        setHistory((prev) => [
-          ...prev,
-          { input: cmd, output: `${u.email}\nID: ${u.id}` },
-        ])
-      }
-      return
-    }
-
     // ==================== /posts — 文章管理 ====================
     if (lower === 'posts') {
       const subcmd = args[0]?.toLowerCase()
@@ -499,25 +584,6 @@ export default function App() {
       }
 
       // /posts — 查看文章列表（走通用 COMMANDS handler）
-    }
-
-    // ==================== /about — 关于 (admin edit) ====================
-    if (lower === 'about') {
-      const subcmd = args[0]?.toLowerCase()
-
-      // /about edit (admin) — 打开编辑表单
-      if (subcmd === 'edit') {
-        if (!isAdminRef.current) {
-          setHistory((prev) => [...prev, { input: cmd, output: '需要管理员权限。请先登录。' }])
-          return
-        }
-        const about = await fetchAbout()
-        setAdminSection('about')
-        setAdminText(about)
-        return
-      }
-
-      // /about — 查看关于（走通用 COMMANDS handler）
     }
 
     // ==================== /knowledge-base — 知识库管理 ====================
@@ -677,6 +743,60 @@ export default function App() {
       return
     }
 
+    // ==================== /invite-code — 邀请码管理 ====================
+    if (lower === 'invite-code') {
+      const subcmd = args[0]?.toLowerCase()
+
+      // /invite add (admin)
+      if (subcmd === 'add') {
+        if (!isAdminRef.current) {
+          setHistory((prev) => [...prev, { input: cmd, output: '需要管理员权限。' }])
+          return
+        }
+        setShowInviteForm('create')
+        return
+      }
+
+      // /invite — 显示列表（默认）
+      if (!subcmd) {
+        if (!isAdminRef.current) {
+          setHistory((prev) => [...prev, { input: cmd, output: '需要管理员权限。' }])
+          return
+        }
+        const list = await listInvites()
+        if (!list.length) {
+          setHistory((prev) => [...prev, { input: cmd, output: '暂无邀请码。\n使用 /invite-code add 创建新的邀请码。' }])
+          return
+        }
+        setHistory((prev) => [
+          ...prev,
+          {
+            input: cmd,
+            output: `共 ${list.length} 个邀请码`,
+            actions: list.map((inv) => ({
+              label: inv.description || inv.token,
+              description: `${inv.token} · ${inv.token_used.toLocaleString()}/${inv.token_quota.toLocaleString()} 词元 · ${new Date(inv.expires_at).toLocaleDateString()} 到期`,
+              inlineActions: [
+                { label: '', _copy: `${window.location.origin}${window.location.pathname}?invite=${inv.token}` },
+                { label: '', _edit: { table: 'invite_codes', title: inv.token, id: inv.id } },
+                { label: '', _delete: { table: 'invite_codes', title: inv.token, col: 'token' } },
+              ],
+            })),
+          },
+        ])
+        return
+      }
+
+      // /invite verify — 验证邀请码
+      if (subcmd === 'verify') {
+        setShowInviteForm('verify')
+        return
+      }
+
+      setHistory((prev) => [...prev, { input: cmd, output: `/invite-code add — 创建新的邀请码` }])
+      return
+    }
+
     // ==================== 通用命令（about, posts）====================
     const handler = COMMANDS[lower]
     if (!handler) {
@@ -787,7 +907,7 @@ export default function App() {
 
       if (result.stream) {
         let finalText = ''
-        await readStream(result.stream, (text) => {
+        const { usage: streamUsage } = await readStream(result.stream, (text) => {
           finalText = text
           setHistory((prev) => {
             const updated = [...prev]
@@ -812,6 +932,11 @@ export default function App() {
         })
         markDone()
         chatHistoryRef.current.push({ role: 'assistant', content: finalText })
+        // 消耗邀请码词元（agent 轮次 + streaming）
+        const totalUsage = (result.usage || 0) + (streamUsage || 0)
+        if (!isAdminRef.current && inviteTokenRef.current && totalUsage) {
+          consumeInvite(inviteTokenRef.current, totalUsage)
+        }
         if (u)
           getSupabase()
             ?.from('chat_messages')
@@ -837,6 +962,10 @@ export default function App() {
           role: 'assistant',
           content: result.text,
         })
+        // 消耗邀请码词元
+        if (!isAdminRef.current && inviteTokenRef.current && result.usage) {
+          consumeInvite(inviteTokenRef.current, result.usage)
+        }
         if (u)
           getSupabase()
             ?.from('chat_messages')
@@ -967,6 +1096,12 @@ export default function App() {
     // AI 聊天
     if (!currentInput.startsWith('/')) {
       if (!currentInput.trim()) return
+      // 邀请码检查：管理员直接放行，其他人需验证
+      if (!isAdminRef.current && !inviteTokenRef.current) {
+        setHistory((prev) => [...prev, { input: currentInput, output: '使用邀请码后才能进行 AI 聊天。\n请输入邀请码：/invite-code verify' }])
+        setInput('')
+        return
+      }
       submitChatRef.current(currentInput)
       return
     }
@@ -1159,7 +1294,7 @@ export default function App() {
           history={history}
           input={input}
           dropdownCommands={dropdownCommands}
-          commandDescriptions={COMMAND_DESCRIPTIONS}
+          commandDescriptions={allDescriptions}
           dropdownIdx={dropdownIdx}
           hoverIdx={hoverIdx}
           passwordMode={!!passwordMode}
@@ -1167,6 +1302,7 @@ export default function App() {
           isAdmin={isAdmin}
           skills={skills}
           modelInfo={modelInfo}
+          inviteInfo={inviteInfo}
           pendingFile={pendingFile}
           textareaRef={textareaRef}
           bottomRef={bottomRef}
@@ -1197,7 +1333,7 @@ export default function App() {
         <Welcome
           input={input}
           dropdownCommands={dropdownCommands}
-          commandDescriptions={COMMAND_DESCRIPTIONS}
+          commandDescriptions={allDescriptions}
           dropdownIdx={dropdownIdx}
           hoverIdx={hoverIdx}
           passwordMode={!!passwordMode}
@@ -1205,6 +1341,7 @@ export default function App() {
           isAdmin={isAdmin}
           skills={skills}
           modelInfo={modelInfo}
+          inviteInfo={inviteInfo}
           pendingFile={pendingFile}
           textareaRef={textareaRef}
           onInputChange={(v) => {
@@ -1232,14 +1369,6 @@ export default function App() {
       )}
 
       {/* ============ Admin 弹层 ============ */}
-      {adminSection === 'about' && (
-        <AboutEdit
-          currentContent={adminText}
-          onClose={() => setAdminSection(null)}
-          onSaved={() => setDataVersion((v) => v + 1)}
-        />
-      )}
-
       {(adminSection === 'post-add' || adminSection === 'post-edit') && (
         <PostForm
           mode={adminSection === 'post-add' ? 'add' : 'edit'}
@@ -1268,6 +1397,24 @@ export default function App() {
           onSaved={(message) => {
             setHistory((prev) => [...prev, { input: '', output: message }])
           }}
+        />
+      )}
+
+      {/* InviteForm */}
+      {showInviteForm && (
+        <InviteForm
+          mode={showInviteForm}
+          onClose={() => { setShowInviteForm(null); setInviteEditId(null) }}
+          onVerified={(token) => {
+            setInviteToken(token)
+            setShowInviteForm(null)
+          }}
+          onSaved={() => setDataVersion((v) => v + 1)}
+          initialDescription={inviteEditDesc}
+          initialQuota={inviteEditQuota}
+          initialDays={inviteEditDays}
+          editId={inviteEditId ?? undefined}
+          editToken={inviteEditToken}
         />
       )}
 

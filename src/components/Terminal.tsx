@@ -25,6 +25,7 @@ type Props = {
   isAdmin: boolean
   skills: Skill[]
   modelInfo: { provider: string; model: string } | null
+  inviteInfo: { used: number; quota: number } | null
   pendingFile: PendingFile | null
   textareaRef: RefObject<HTMLTextAreaElement | null>
   bottomRef: RefObject<HTMLDivElement | null>
@@ -51,6 +52,7 @@ export const Terminal: FC<Props> = ({
   isAdmin,
   skills,
   modelInfo,
+  inviteInfo,
   pendingFile,
   textareaRef,
   bottomRef,
@@ -163,6 +165,7 @@ export const Terminal: FC<Props> = ({
                 {modelInfo?.provider
                 ? `${modelInfo.provider} · ${modelInfo.model}`
                 : modelInfo?.model ?? ''}
+                {inviteInfo && ` · 词元 ${inviteInfo.used.toLocaleString()}/${inviteInfo.quota.toLocaleString()}`}
               </span>
             </div>
           </div>
