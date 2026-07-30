@@ -49,6 +49,9 @@ Deno.serve(async (req: Request) => {
     proxy_headers?: Record<string, string>
     proxy_body?: string
     max_tokens?: number
+    embedding_task?: string
+    embedding_batch?: boolean
+    embedding_texts?: string[]
   }
 
   // ==================== PDF 文本提取 ====================
@@ -260,7 +263,28 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ==================== Embedding 代理 ====================
+  // ==================== Embedding 批量生成 ====================
+  if (body.embedding_batch && body.embedding_texts?.length) {
+    const res = await fetch("https://api.jina.ai/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${JINA_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "jina-embeddings-v3",
+        input: body.embedding_texts,
+        dimensions: 1024,
+        task: body.embedding_task ?? "retrieval.passage",
+      }),
+    })
+    return new Response(res.body, {
+      status: res.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+  }
+
+  // ==================== Embedding 单个生成 ====================
   if (body.embedding && body.messages?.[0]) {
     const msg = body.messages[0] as { content: string }
     const text = typeof msg === "string" ? msg : msg.content
@@ -273,6 +297,8 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         model: "jina-embeddings-v3",
         input: text,
+        dimensions: 1024,
+        task: body.embedding_task ?? "retrieval.passage",
       }),
     })
     return new Response(res.body, {

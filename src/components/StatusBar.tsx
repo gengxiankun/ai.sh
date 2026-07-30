@@ -1,8 +1,7 @@
 // 输入框顶部状态栏 — 显示用户信息
-// 在 terminal 模式和 welcome 模式中复用
-
-import { type FC } from 'react'
+import { type FC, useMemo } from 'react'
 import type { User } from '@supabase/supabase-js'
+import md5 from 'blueimp-md5'
 
 type Props = {
   user: User | null
@@ -10,7 +9,16 @@ type Props = {
   onGuestClick: () => void
 }
 
+function gravatarUrl(email: string): string {
+  const hash = md5(email.trim().toLowerCase())
+  return `https://www.gravatar.com/avatar/${hash}?s=32&d=identicon`
+}
+
 export const StatusBar: FC<Props> = ({ user, isAdmin, onGuestClick }) => {
+  const gravatar = useMemo(() => {
+    return user?.email ? gravatarUrl(user.email) : ''
+  }, [user?.email])
+
   return (
     <div
       className="px-3 py-1.5 text-xs flex items-center gap-2 border-b"
@@ -21,12 +29,16 @@ export const StatusBar: FC<Props> = ({ user, isAdmin, onGuestClick }) => {
     >
       {user ? (
         <>
-          <span
-            className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[9px] font-semibold"
-            style={{ background: 'var(--ui-accent)', color: '#fff' }}
-          >
-            {user.email?.[0].toUpperCase()}
-          </span>
+          {gravatar ? (
+            <img className="w-4 h-4 rounded-full shrink-0" src={gravatar} alt="" />
+          ) : (
+            <span
+              className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[9px] font-semibold"
+              style={{ background: 'var(--ui-accent)', color: '#fff' }}
+            >
+              {user.email?.[0].toUpperCase()}
+            </span>
+          )}
           <span className="truncate">{user.email}</span>
           {isAdmin && (
             <span

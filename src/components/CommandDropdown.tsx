@@ -37,7 +37,7 @@ export const CommandDropdown: FC<Props> = ({
           onMouseLeave={onLeave}
           onClick={() => onSelect(cmd)}
         >
-          <span className="shrink-0 font-medium w-28" style={{ color: i === selectedIdx ? 'var(--ui-accent)' : 'var(--ui-text)' }}>
+          <span className="shrink-0 font-medium w-32 truncate" style={{ color: i === selectedIdx ? 'var(--ui-accent)' : 'var(--ui-text)' }}>
             /{cmd}
           </span>
           {descriptions[cmd] && (

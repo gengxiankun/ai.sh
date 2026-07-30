@@ -13,7 +13,7 @@ export async function fetchAbout(): Promise<string> {
 
 export async function fetchPosts(): Promise<SitePost[]> {
   const data = await fetchREST<SitePost[]>(
-    'site_posts?select=id,title,detail,category_id,document_id&order=sort_order',
+    'site_posts?select=id,title,detail,category_id,document_id,created_at&order=sort_order',
   )
   return data ?? []
 }

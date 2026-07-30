@@ -9,11 +9,12 @@ execute = async function(args, context) {
 
   var embRes = await fetch(workerUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
     body: JSON.stringify({
       messages: [{ role: 'user', content: p.content }],
       stream: false,
-      embedding: true
+      embedding: true,
+      embedding_task: 'retrieval.passage'
     })
   })
   if (!embRes.ok) return '生成向量失败: ' + embRes.status

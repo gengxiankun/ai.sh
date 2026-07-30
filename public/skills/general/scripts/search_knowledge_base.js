@@ -14,7 +14,8 @@ execute = async function(args, context) {
     body: JSON.stringify({
       messages: [{ role: 'user', content: query }],
       stream: false,
-      embedding: true
+      embedding: true,
+      embedding_task: 'retrieval.query'
     })
   })
   if (!embedRes.ok) return 'Embedding generation failed.'
@@ -33,7 +34,7 @@ execute = async function(args, context) {
     },
     body: JSON.stringify({
       query_embedding: JSON.stringify(embedding),
-      match_threshold: 0.3,
+      match_threshold: 0.35,
       match_count: 5
     })
   })

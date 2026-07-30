@@ -41,9 +41,6 @@ triggers: 管理, 后台, admin, 新增, 添加, 创建, create, add, 编辑, �
 - **update_tag** — 编辑标签（id, name?）
 - **delete_tag** — 按 id 删除标签
 
-### 关于（单行）
-- **update_about** — 更新关于内容（content）
-
 ### 知识库 rag_documents
 - **list_kb** — 列出知识库文档
 - **create_kb** — 新增文档（title, content, source），自动生成向量 embedding

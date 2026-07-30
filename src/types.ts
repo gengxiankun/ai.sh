@@ -7,7 +7,7 @@ import type { Skill } from './lib/skills/index'
 export type ChatStep = {
   skill?: string
   tool?: string
-  status: 'calling' | 'done' | 'error' | 'reasoning'
+  status: 'calling' | 'done' | 'error' | 'reasoning' | 'routing'
   content?: string
 }
 
@@ -57,6 +57,7 @@ export type SitePost = {
   detail: string
   category_id?: number
   document_id?: number
+  created_at: string
 }
 
 export type SiteCategory = {

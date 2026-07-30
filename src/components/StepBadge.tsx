@@ -5,11 +5,24 @@ import type { ChatStep } from '../types'
 import { type FC } from 'react'
 
 export const StepBadge: FC<{ step: ChatStep }> = ({ step }) => {
+  // 路由状态 — 显示 skill 选择
+  if (step.status === 'routing') {
+    return (
+      <div
+        className="text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit"
+        style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}
+      >
+        <span className="shrink-0">🧠</span>
+        <span className="font-medium">{step.content}</span>
+      </div>
+    )
+  }
+
   // 推理状态 — 显示 AI 思考过程
   if (step.status === 'reasoning') {
     return (
       <div
-        className="text-[10px] px-2 py-1 rounded-lg inline-flex items-start gap-1 max-w-full"
+        className="text-[10px] px-2 py-1 rounded-lg inline-flex items-start gap-1 w-fit max-w-full"
         style={{ background: 'rgba(99,102,241,0.08)', color: '#a5b4fc' }}
       >
         <span className="shrink-0 mt-px">🧠</span>

@@ -30,6 +30,21 @@ import type {
 } from './types'
 import './App.css'
 
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const sec = Math.floor(diff / 1000)
+  if (sec < 60) return '刚刚'
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min} 分钟前`
+  const hrs = Math.floor(min / 60)
+  if (hrs < 24) return `${hrs} 小时前`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days} 天前`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months} 个月前`
+  return `${Math.floor(months / 12)} 年前`
+}
+
 // 终端命令处理 — 返回字符串或 { output, actions }
 const COMMANDS: Record<string, (args: string[]) => Promise<CommandResult>> = {
   posts: async () => {
@@ -64,6 +79,10 @@ const COMMANDS: Record<string, (args: string[]) => Promise<CommandResult>> = {
         const catName = p.category_id ? catMap.get(p.category_id) : undefined
         const tagIds = postTags.get(p.id) ?? []
         const tagNames = tagIds.map((tid) => tagMap.get(tid)).filter(Boolean) as string[]
+        if (p.created_at) {
+          const ago = timeAgo(p.created_at)
+          tagNames.unshift(ago)
+        }
         return {
           label: p.title,
           category: catName,
@@ -95,14 +114,12 @@ const VISIBLE_SUBCOMMANDS = [
   'invite-code verify',
   'posts add',
   'knowledge-base search',
-  'knowledge-base delete',
 ]
 
 // 仅管理员可见的子命令
 const ADMIN_SUBCOMMANDS: string[] = [
   'invite-code add',
   'posts add',
-  'knowledge-base delete',
 ]
 
 // 子命令描述
@@ -445,11 +462,6 @@ export default function App() {
       }
       return
     }
-    // 普通展示详情
-    setHistory((prev) => [
-      ...prev,
-      { input: '', output: action.detail ?? '', image: action.image },
-    ])
   }
 
   // ==================== runCommand — 命令路由 ====================
@@ -628,7 +640,7 @@ export default function App() {
                   output: docs
                     .map(
                       (d) =>
-                        `**${d.title}** (${Math.round(d.similarity * 100)}%)\n${d.content.slice(0, 500)}...`,
+                        `**${d.title}** (${Math.round(d.similarity * 100)}%)\n${d.content}`,
                     )
                     .join('\n\n---\n\n'),
                 },
@@ -644,48 +656,12 @@ export default function App() {
         return
       }
 
-      // /knowledge-base delete <id> (admin) — 删除文档
-      if (subcmd === 'delete') {
-        if (!isAdminRef.current) {
-          setHistory((prev) => [...prev, { input: cmd, output: '需要管理员权限。请先登录。' }])
-          return
-        }
-        if (!args[1]) {
-          setHistory((prev) => [...prev, { input: cmd, output: 'Usage: /knowledge-base delete <id>' }])
-          return
-        }
-        const id = args[1]
-        const key = import.meta.env.VITE_SUPABASE_ANON_KEY
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-        const token = getAuthToken()
-        fetch(`${supabaseUrl}/rest/v1/rag_documents?id=eq.${id}`, {
-          method: 'DELETE',
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${token}`,
-            Prefer: 'return=minimal',
-          },
-        }).then((r) => {
-          if (r.ok)
-            setHistory((prev) => [
-              ...prev,
-              { input: '', output: `Document ${id} deleted.` },
-            ])
-          else
-            setHistory((prev) => [
-              ...prev,
-              { input: '', output: 'Delete failed.' },
-            ])
-        })
-        return
-      }
-
       // /knowledge-base — 查看知识库列表
       setHistory((prev) => [...prev, { input: cmd, output: 'Loading...' }])
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY
       const url = import.meta.env.VITE_SUPABASE_URL
       fetch(
-        `${url}/rest/v1/rag_documents?select=id,title,content,source,created_at&order=created_at.desc`,
+        `${url}/rest/v1/rag_documents?select=id,title,source,created_at&order=created_at.desc&limit=50`,
         { headers: { apikey: key, Authorization: `Bearer ${key}` } },
       )
         .then((r) => r.json())
@@ -869,18 +845,13 @@ export default function App() {
                 updated[i].output === ''
               ) {
                 const existing = [...(updated[i].steps ?? [])]
-                // 推理步骤每次追加，工具调用步骤按 tool 去重
-                if (step.status === 'reasoning') {
-                  existing.push(step)
+                // done/error 替换 last calling（同 tool），其余追加
+                if ((step.status === 'done' || step.status === 'error') && step.tool) {
+                  const lastIdx = existing.findLastIndex((s) => s.tool === step.tool && s.status === 'calling')
+                  if (lastIdx >= 0) existing[lastIdx] = step
+                  else existing.push(step)
                 } else {
-                  const idx = existing.findIndex(
-                    (s) => s.tool === step.tool,
-                  )
-                  if (idx >= 0) {
-                    existing[idx] = step
-                  } else {
-                    existing.push(step)
-                  }
+                  existing.push(step)
                 }
                 updated[i] = { ...updated[i], steps: existing }
                 break
@@ -1163,7 +1134,7 @@ export default function App() {
         const selected =
           cmds.length > 0 && dIdx >= 0 ? cmds[dIdx] : cmds[0]
         if (selected) {
-          setInput('/' + selected + ' ')
+          setInput('/' + selected)
           setDropdownIdx(-1)
           setHoverIdx(-1)
         }

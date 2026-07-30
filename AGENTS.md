@@ -56,7 +56,7 @@ No tests, no formatter.
 ## Skills system
 - Skills live in `public/skills/<id>/` as static files: `SKILL.md` (YAML front-matter + Markdown prompt) + `scripts/manifest.json` + `scripts/*.js`
 - Loaded at runtime via fetch, not bundled
-- Public skills: `qa`, `scraper`
+- Public skills: `general`, `scraper`
 - Admin-only skill: `admin` (loaded only when `isAdmin` is true)
 - Skill scripts execute in-browser via `new Function()` sandbox in `src/lib/skills/runner.ts`
 - Skills define which LLM tools are available during AI chat

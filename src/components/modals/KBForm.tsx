@@ -3,8 +3,7 @@
 
 import { type FC, useState } from 'react'
 import { Modal } from './Modal'
-import { uploadDocument } from '../../lib/rag'
-import { getAuthToken } from '../../lib/api'
+import { uploadDocument, updateDocument } from '../../lib/rag'
 
 type Props = {
   mode: 'upload' | 'edit'
@@ -36,21 +35,8 @@ export const KBForm: FC<Props> = ({
         onSaved('Upload failed. Check worker configuration.')
       }
     } else if (editId) {
-      // 编辑模式：上传新文档 + 删除旧文档
-      const ok = await uploadDocument(title, content)
+      const ok = await updateDocument(editId, title, content)
       if (ok) {
-        // 删除旧文档
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-        const key = import.meta.env.VITE_SUPABASE_ANON_KEY
-        const token = getAuthToken()
-        await fetch(`${supabaseUrl}/rest/v1/rag_documents?id=eq.${editId}`, {
-          method: 'DELETE',
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${token}`,
-            Prefer: 'return=minimal',
-          },
-        })
         onSaved('Document updated.')
       } else {
         onSaved('Update failed.')

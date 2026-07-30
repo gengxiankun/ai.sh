@@ -71,18 +71,31 @@ CREATE TABLE IF NOT EXISTS site_post_tags (
 -- ============================================
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- 文档元数据
 CREATE TABLE IF NOT EXISTS rag_documents (
-  id SERIAL PRIMARY KEY,
-  title TEXT NOT NULL,
-  content TEXT NOT NULL,
-  source TEXT DEFAULT '',
-  embedding VECTOR(1024),
+  id         SERIAL PRIMARY KEY,
+  title      TEXT NOT NULL,
+  source     TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 文档分块 + 向量
+CREATE TABLE IF NOT EXISTS rag_chunks (
+  id          SERIAL PRIMARY KEY,
+  document_id INT NOT NULL REFERENCES rag_documents(id) ON DELETE CASCADE,
+  chunk_index INT NOT NULL,
+  content     TEXT NOT NULL,
+  embedding   VECTOR(1024),
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 分块向量索引
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding ON rag_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- 搜索函数：查询 chunks → 按文档去重取最高分
 CREATE OR REPLACE FUNCTION search_rag_docs(
-  query_embedding VECTOR(1536),
-  match_threshold FLOAT DEFAULT 0.7,
+  query_embedding VECTOR(1024),
+  match_threshold FLOAT DEFAULT 0.35,
   match_count INT DEFAULT 5
 ) RETURNS TABLE(
   id INT,
@@ -91,12 +104,13 @@ CREATE OR REPLACE FUNCTION search_rag_docs(
   similarity FLOAT
 ) LANGUAGE SQL STABLE AS $$
   SELECT
-    id,
-    title,
-    content,
-    1 - (embedding <=> query_embedding) AS similarity
-  FROM rag_documents
-  WHERE 1 - (embedding <=> query_embedding) > match_threshold
+    d.id,
+    d.title,
+    c.content,
+    1 - (c.embedding <=> query_embedding) AS similarity
+  FROM rag_chunks c
+  JOIN rag_documents d ON d.id = c.document_id
+  WHERE 1 - (c.embedding <=> query_embedding) > match_threshold
   ORDER BY similarity DESC
   LIMIT match_count;
 $$;
@@ -112,6 +126,7 @@ BEGIN
   ALTER TABLE IF EXISTS site_posts ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS site_post_tags ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS rag_documents ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS rag_chunks ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS chat_messages ENABLE ROW LEVEL SECURITY;
 END $$;
 
@@ -137,6 +152,9 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'rag_documents') THEN
     CREATE POLICY "public_read" ON rag_documents FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'rag_chunks') THEN
+    CREATE POLICY "public_read" ON rag_chunks FOR SELECT USING (true);
   END IF;
 END $$;
 
@@ -206,6 +224,14 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'rag_documents') THEN
     CREATE POLICY "admin_delete" ON rag_documents FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+
+  -- rag_chunks
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'rag_chunks') THEN
+    CREATE POLICY "admin_insert" ON rag_chunks FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'rag_chunks') THEN
+    CREATE POLICY "admin_delete" ON rag_chunks FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
   END IF;
 END $$;
 

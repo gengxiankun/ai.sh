@@ -162,7 +162,7 @@ async function routeSkill(
 Available skills:
 ${skillList}
 
-Respond with ONLY the skill id (one word, e.g. "qa"), nothing else.`
+Respond with ONLY the skill id (one word, e.g. "general"), nothing else.`
 
   const res = await callAPI(
     [
@@ -210,7 +210,7 @@ export async function chat(
     } catch {
       // 路由失败时静默降级，默认 QA
     }
-    context?.onStep?.({ status: 'reasoning', content: `→ ${skillsMeta.find((s) => s.id === skillId)?.name ?? skillId}` })
+    context?.onStep?.({ status: 'routing', content: `→ ${skillsMeta.find((s) => s.id === skillId)?.name ?? skillId}` })
   }
 
   const matchedSkill = context?.skills?.find((s) => s.id === skillId)
