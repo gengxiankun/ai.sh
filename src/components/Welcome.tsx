@@ -62,6 +62,7 @@ export const Welcome: FC<Props> = ({
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
   const [showSkills, setShowSkills] = useState(false)
+  const [skillsFlip, setSkillsFlip] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -234,18 +235,23 @@ export const Welcome: FC<Props> = ({
           <div
             className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:opacity-80 relative"
             style={{ color: 'var(--ui-text)' }}
-            onMouseEnter={() => setShowSkills(true)}
+            onMouseEnter={(e) => {
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              const estH = skills.length * 36 + 8
+              setSkillsFlip(rect.bottom + estH > window.innerHeight)
+              setShowSkills(true)
+            }}
             onMouseLeave={() => setShowSkills(false)}
           >
             <Plus className="w-3.5 h-3.5" />
             <span>技能</span>
             {showSkills && skills.length > 0 && (
               <div
-                className="absolute left-full top-0 ml-1 w-56 rounded-lg border py-1 shadow-lg z-50"
-                style={{
-                  background: 'var(--ui-input-bg)',
-                  borderColor: 'var(--ui-input-border)',
-                }}
+                className="absolute w-56 rounded-lg border py-1 shadow-lg z-50 max-h-[12rem] overflow-y-auto"
+                style={skillsFlip
+                  ? { left: '100%', marginLeft: 4, bottom: 0, background: 'var(--ui-input-bg)', borderColor: 'var(--ui-input-border)' }
+                  : { left: '100%', marginLeft: 4, top: 0, background: 'var(--ui-input-bg)', borderColor: 'var(--ui-input-border)' }
+                }
               >
                 {skills.map((s) => (
                   <div
