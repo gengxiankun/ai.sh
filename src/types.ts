@@ -18,6 +18,8 @@ export type Action = {
   description?: string
   category?: string
   tags?: string[]
+  priority?: 'high' | 'medium' | 'low'
+  compact?: boolean
   url?: string
   disabled?: boolean
   image?: string
@@ -25,6 +27,8 @@ export type Action = {
   _delete?: { table: string; title: string; col?: string }
   _edit?: { table: string; title: string; id?: number }
   _copy?: string
+  _done?: { id: number; title: string }
+  _undo?: { id: number }
   inlineActions?: Action[]
 }
 
@@ -38,6 +42,8 @@ export type Line = {
   isAI?: boolean
   steps?: ChatStep[]
   file?: { name: string; type: string }
+  groupTitle?: boolean
+  defaultExpanded?: boolean
 }
 
 // 命令返回值

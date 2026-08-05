@@ -10,7 +10,7 @@ import { ActionButton } from './ActionButton'
 import domtoimage from 'dom-to-image-more'
 import qrcode from 'qrcode-generator'
 import md5 from 'blueimp-md5'
-import { Share2, Download, X } from 'lucide-react'
+import { Share2, Download, X, ChevronDown } from 'lucide-react'
 
 const GITHUB_URL = 'https://github.com/gengxiankun/ai.sh'
 
@@ -28,6 +28,7 @@ export const History: FC<Props> = ({ history, isAdmin, userEmail, onActionClick 
 
   const [shareImage, setShareImage] = useState<string | null>(null)
   const [shareLoading, setShareLoading] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<number, boolean>>({})
   const contentRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
   const handleShare = async (idx: number, userQuestion: string) => {
@@ -97,7 +98,9 @@ export const History: FC<Props> = ({ history, isAdmin, userEmail, onActionClick 
   return (
     <div className="flex-1 overflow-y-auto px-4 sm:px-8 md:px-12 py-5">
       <div className="max-w-4xl mx-auto">
-        {visibleLines.map((line, i) => (
+        {visibleLines.map((line, i) => {
+          const isCollapsed = collapsedGroups[i] ?? !(line.defaultExpanded ?? false)
+          return (
           <div key={i} className="mb-3" style={{ animation: 'fade-in 0.2s ease-out' }}>
             <div ref={(el) => { if (el) contentRefs.current.set(i, el) }}>
             {line.input !== '' && (
@@ -111,10 +114,35 @@ export const History: FC<Props> = ({ history, isAdmin, userEmail, onActionClick 
                 {line.steps.map((step, j) => (<StepBadge key={j} step={step} />))}
               </div>
             )}
-            {line.output && (
-              <div className="text-sm mt-1.5 leading-relaxed prose prose-sm max-w-none dark:prose-invert" style={{ color: 'var(--ui-text-secondary)' }}>
-                <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} rehypePlugins={[rehypeHighlight]}>{line.output}</ReactMarkdown>
+            {line.groupTitle ? (
+              <div className="mt-1.5">
+                <button type="button"
+                  className="w-full flex items-center gap-1.5 py-1.5 text-xs font-semibold text-left cursor-pointer transition-colors"
+                  style={{ color: 'var(--ui-text)' }}
+                  onClick={() => setCollapsedGroups((prev) => ({ ...prev, [i]: !isCollapsed }))}
+                  aria-expanded={!isCollapsed}>
+                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} style={{ color: 'var(--ui-text-secondary)' }} />
+                  <span className="flex-1 min-w-0 truncate">{line.output}</span>
+                </button>
+                {!isCollapsed && line.actions && (
+                  <div className="flex flex-col gap-1.5">
+                    {line.actions.map((action, j) => (<ActionButton key={j} action={action} isAdmin={isAdmin} onClick={onActionClick} />))}
+                  </div>
+                )}
               </div>
+            ) : (
+              <>
+                {line.output && (
+                  <div className="text-sm mt-1.5 leading-relaxed prose prose-sm max-w-none dark:prose-invert" style={{ color: 'var(--ui-text-secondary)' }}>
+                    <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} rehypePlugins={[rehypeHighlight]}>{line.output}</ReactMarkdown>
+                  </div>
+                )}
+                {line.actions && (
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    {line.actions.map((action, j) => (<ActionButton key={j} action={action} isAdmin={isAdmin} onClick={onActionClick} />))}
+                  </div>
+                )}
+              </>
             )}
             </div>
             {line.image && (
@@ -122,12 +150,7 @@ export const History: FC<Props> = ({ history, isAdmin, userEmail, onActionClick 
                 <img src={line.image} alt="" className="w-44 h-44 rounded-md" />
               </div>
             )}
-            {line.actions && (
-              <div className="mt-2 flex flex-col gap-1.5">
-                {line.actions.map((action, j) => (<ActionButton key={j} action={action} isAdmin={isAdmin} onClick={onActionClick} />))}
-              </div>
-            )}
-            {(line.status || line.input || line.output) && (
+            {(line.status || line.input || line.output) && !line.groupTitle && (
               <div className="flex items-center gap-3 mt-1.5">
                 {line.status === 'loading' && (
                   <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -151,7 +174,8 @@ export const History: FC<Props> = ({ history, isAdmin, userEmail, onActionClick 
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {shareImage && (

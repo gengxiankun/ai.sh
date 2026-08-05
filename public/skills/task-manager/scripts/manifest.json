@@ -1,0 +1,8 @@
+{
+  "search_tasks": { "file": "search_tasks.js", "description": "按标题/备注关键词、截止或完成日期搜索任务（返回备注）", "params": { "query": "关键词(匹配标题或备注)", "date": "某天(YYYY-MM-DD, 匹配截止或完成时间)", "from": "起始日期(可选)", "to": "结束日期(可选)", "status": "状态(可选: pending/done)" } },
+  "list_tasks": { "file": "list_tasks.js", "description": "列出所有任务", "params": { "status": "状态筛选(可选: pending/done)" } },
+  "create_task": { "file": "create_task.js", "description": "创建任务", "params": { "title": "标题", "note": "备注(可选)", "priority": "优先级(可选: high/medium/low)", "due_date": "截止时间(可选, ISO 格式)", "recurrence": "重复(可选: daily/weekly/monthly/yearly)", "recurrence_interval": "重复间隔(可选, 默认1)" } },
+  "update_task": { "file": "update_task.js", "description": "编辑任务", "params": { "id": "任务id", "title": "标题(可选)", "note": "备注(可选)", "priority": "优先级(可选)", "due_date": "截止时间(可选)", "recurrence": "重复(可选)", "recurrence_interval": "间隔(可选)", "status": "状态(可选: pending/done)" } },
+  "complete_task": { "file": "complete_task.js", "description": "完成任务(周期性任务自动生成下一个)", "params": { "id": "任务id" } },
+  "delete_task": { "file": "delete_task.js", "description": "按 id 删除任务", "params": { "id": "任务id" } }
+}

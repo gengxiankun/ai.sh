@@ -67,6 +67,23 @@ CREATE TABLE IF NOT EXISTS site_post_tags (
 );
 
 -- ============================================
+-- Tasks
+-- ============================================
+CREATE TABLE IF NOT EXISTS tasks (
+  id                  SERIAL PRIMARY KEY,
+  title               TEXT NOT NULL,
+  note                TEXT DEFAULT '',
+  status              TEXT DEFAULT 'pending',
+  priority            TEXT DEFAULT 'medium',
+  due_date            TIMESTAMPTZ,
+  recurrence          TEXT,
+  recurrence_interval INT DEFAULT 1,
+  completed_at        TIMESTAMPTZ,
+  created_by          TEXT,
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
 -- RAG / Vector Search
 -- ============================================
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -128,6 +145,7 @@ BEGIN
   ALTER TABLE IF EXISTS rag_documents ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS rag_chunks ENABLE ROW LEVEL SECURITY;
   ALTER TABLE IF EXISTS chat_messages ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS tasks ENABLE ROW LEVEL SECURITY;
 END $$;
 
 -- ============================================
@@ -155,6 +173,9 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'rag_chunks') THEN
     CREATE POLICY "public_read" ON rag_chunks FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'public_read' AND tablename = 'tasks') THEN
+    CREATE POLICY "public_read" ON tasks FOR SELECT USING (true);
   END IF;
 END $$;
 
@@ -232,6 +253,17 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'rag_chunks') THEN
     CREATE POLICY "admin_delete" ON rag_chunks FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+
+  -- tasks
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_insert' AND tablename = 'tasks') THEN
+    CREATE POLICY "admin_insert" ON tasks FOR INSERT WITH CHECK (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_update' AND tablename = 'tasks') THEN
+    CREATE POLICY "admin_update" ON tasks FOR UPDATE USING (auth.email() = 'ADMIN_EMAIL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'admin_delete' AND tablename = 'tasks') THEN
+    CREATE POLICY "admin_delete" ON tasks FOR DELETE USING (auth.email() = 'ADMIN_EMAIL');
   END IF;
 END $$;
 

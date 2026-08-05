@@ -15,11 +15,13 @@ import {
 import { useAuth } from './hooks/useAuth'
 import { getAuthToken } from './lib/api'
 import { verifyInvite, consumeInvite, listInvites } from './lib/invite'
+import { fetchTasks, deleteTask as deleteTaskApi, fetchTaskHistory, updateTask, completeTask } from './lib/tasks'
 import { Terminal } from './components/Terminal'
 import { Welcome } from './components/Welcome'
 import { PostForm } from './components/modals/PostForm'
 import { KBForm } from './components/modals/KBForm'
 import { InviteForm } from './components/modals/InviteForm'
+import { TaskForm } from './components/modals/TaskForm'
 import type {
   Action,
   Line,
@@ -106,6 +108,41 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   posts: '帖子',
   'knowledge-base': '知识库',
   'invite-code': '邀请码',
+  tasks: '任务',
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+// 本地时区日期键（YYYY-MM-DD）— 用于任务分组，避免 UTC 跨天错位
+function localDateKey(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+// 本地时区日期 — 今天/明天/昨天，否则 M月D日
+// 纯日期(YYYY-MM-DD)按本地 00:00 解析，避免 UTC 跨天错位
+function formatTaskDate(iso: string): string {
+  const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00')
+  if (isNaN(d.getTime())) return iso
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const diff = Math.round((day.getTime() - today.getTime()) / 86400000)
+  if (diff === 0) return '今天'
+  if (diff === 1) return '明天'
+  if (diff === -1) return '昨天'
+  return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+// 本地时区 日期 + 时间 — M月D日 HH:mm(:ss)
+function formatTaskDateTime(iso: string, withSeconds = false): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  const time = withSeconds
+    ? `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+    : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  return `${formatTaskDate(iso)} ${time}`
 }
 
 // 子命令（在下拉列表中可见）
@@ -114,12 +151,14 @@ const VISIBLE_SUBCOMMANDS = [
   'invite-code verify',
   'posts add',
   'knowledge-base search',
+  'tasks add',
 ]
 
 // 仅管理员可见的子命令
 const ADMIN_SUBCOMMANDS: string[] = [
   'invite-code add',
   'posts add',
+  'tasks add',
 ]
 
 // 子命令描述
@@ -128,6 +167,7 @@ const SUBCOMMAND_DESCRIPTIONS: Record<string, string> = {
   'invite-code verify': '验证邀请码',
   'posts add': '创建帖子',
   'knowledge-base search': '搜索知识库',
+  'tasks add': '创建任务',
 }
 
 // 所有可用命令（含系统命令）
@@ -135,9 +175,10 @@ const ALL_COMMANDS = [
   'register',
   'login',
   'logout',
+  'posts',
+  'tasks',
   'knowledge-base',
   'invite-code',
-  ...Object.keys(COMMANDS),
   ...VISIBLE_SUBCOMMANDS,
 ]
 
@@ -197,10 +238,23 @@ export default function App() {
   const [inviteEditQuota, setInviteEditQuota] = useState(5000)
   const [inviteEditToken, setInviteEditToken] = useState('')
   const [inviteEditDays, setInviteEditDays] = useState(7)
+
+  // 任务状态
+  const [showTaskForm, setShowTaskForm] = useState<'add' | 'edit' | null>(null)
+  const [taskEditId, setTaskEditId] = useState<number | null>(null)
+  const [taskEditTitle, setTaskEditTitle] = useState('')
+  const [taskEditNote, setTaskEditNote] = useState('')
+  const [taskEditPriority, setTaskEditPriority] = useState('medium')
+  const [taskEditDueDate, setTaskEditDueDate] = useState('')
+  const [taskEditRecurrence, setTaskEditRecurrence] = useState('')
+  const [taskEditInterval, setTaskEditInterval] = useState(1)
+
   const inviteTokenRef = useRef(inviteToken)
   const showInviteFormRef = useRef(showInviteForm)
+  const showTaskFormRef = useRef(showTaskForm)
   inviteTokenRef.current = inviteToken
   showInviteFormRef.current = showInviteForm
+  showTaskFormRef.current = showTaskForm
 
   skillsRef.current = skills
 
@@ -273,7 +327,7 @@ export default function App() {
     const el = containerRef.current
     if (!el) return
     const cb = () => {
-      if (adminSectionRef.current || showInviteFormRef.current) return
+      if (adminSectionRef.current || showInviteFormRef.current || showTaskFormRef.current) return
       const inp = el.querySelector('input')
       if (inp && document.activeElement !== inp) inp.focus()
     }
@@ -366,12 +420,103 @@ export default function App() {
   // 是否有命令历史（决定显示 Terminal 还是 Welcome）
   const hasCommands = history.some((h) => h.input !== '')
 
+  // 构建单个 task 的 action 对象
+  const taskAction = (t: {
+    id: number; title: string; note: string; status: string;
+    priority: string; due_date: string | null; recurrence: string | null;
+    recurrence_interval: number; completed_at: string | null;
+  }) => {
+    const rLabel = t.recurrence
+      ? ({ daily: '每天', weekly: '每周', monthly: '每月', yearly: '每年' } as Record<string, string>)[t.recurrence] +
+        (t.recurrence_interval > 1 ? ` · 间隔${t.recurrence_interval}` : '')
+      : '不重复'
+
+    const category = t.due_date
+      ? formatTaskDateTime(t.due_date)
+      : undefined
+    return {
+      label: t.title,
+      detail: t.note || undefined,
+      compact: true,
+      priority: (t.priority === 'high' || t.priority === 'medium' || t.priority === 'low' ? t.priority : undefined) as Action['priority'] | undefined,
+      category,
+      tags: t.recurrence ? [rLabel] : undefined,
+      _done: t.status !== 'done' ? { id: t.id, title: t.title } : undefined,
+      _undo: t.status === 'done' ? { id: t.id } : undefined,
+      inlineActions: [
+        { label: '', _edit: { table: 'tasks', title: t.title, id: t.id } },
+        { label: '', _delete: { table: 'tasks', title: String(t.id), col: 'id' } },
+      ],
+    }
+  }
+
+  // 按日期分组任务 — 仅保留昨天/今天/明天三个日期
+  function buildTaskGroups(tasks: { id: number; title: string; note: string; status: string; due_date: string | null; priority: string; recurrence: string | null; recurrence_interval: number; completed_at: string | null }[]) {
+    const groups = new Map<string, typeof tasks>()
+    for (const t of tasks) {
+      const key = t.due_date ? localDateKey(t.due_date) : '无截止日期'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(t)
+    }
+    const lines: { input: string; output: string; groupTitle?: boolean; defaultExpanded?: boolean; actions?: ReturnType<typeof taskAction>[] }[] = []
+    // 昨天 → 今天 → 明天；默认展开仍含未完成任务的日期
+    for (const offset of [-1, 0, 1]) {
+      const d = new Date()
+      d.setDate(d.getDate() + offset)
+      const date = localDateKey(d.toISOString())
+      const items = groups.get(date)
+      if (!items || items.length === 0) continue
+      const hasPending = items.some((t) => t.status !== 'done')
+      lines.push({ input: '', output: formatTaskDate(date), groupTitle: true, defaultExpanded: hasPending, actions: items.map(taskAction) })
+    }
+    return lines
+  }
+
+  // 刷新任务列表（toggle 后原地更新）
+  const refreshTaskList = async () => {
+    const tasks = await fetchTasks(true)
+    const groups = buildTaskGroups(tasks)
+    setHistory((prev) => {
+      const updated = [...prev]
+      // 找到 /tasks 行，替换其后的分组行
+      let taskIdx = -1
+      for (let i = updated.length - 1; i >= 0; i--) {
+        if (updated[i].input === '/tasks' || updated[i].input?.startsWith('/tasks ')) {
+          taskIdx = i
+          break
+        }
+      }
+      if (taskIdx >= 0) {
+        updated[taskIdx] = { ...updated[taskIdx], output: `共 ${tasks.length} 个任务` }
+        // 删除旧的 group 行（紧跟 /tasks 之后的空 input 行）
+        while (taskIdx + 1 < updated.length && updated[taskIdx + 1].input === '') {
+          updated.splice(taskIdx + 1, 1)
+        }
+        // 插入新的 group 行
+        updated.splice(taskIdx + 1, 0, ...groups.map(g => ({ ...g, input: '' })))
+      }
+      return updated
+    })
+  }
+
   // ==================== showDetail — Action 点击处理 ====================
   const showDetail = async (action: Action) => {
     // 复制
     if (action._copy) {
       await navigator.clipboard.writeText(action._copy)
       setHistory((prev) => [...prev, { input: '', output: '已复制到剪贴板' }])
+      return
+    }
+    // 完成任务（直接标记完成）
+    if (action._done) {
+      await completeTask(action._done.id)
+      await refreshTaskList()
+      return
+    }
+    // 撤销完成
+    if (action._undo) {
+      await updateTask(action._undo.id, { status: 'pending' })
+      await refreshTaskList()
       return
     }
     // Admin 删除
@@ -382,6 +527,13 @@ export default function App() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY
       const token = getAuthToken()
+
+      // 任务删除 — 直接刷新列表
+      if (table === 'tasks') {
+        await deleteTaskApi(Number(action._delete.title))
+        await refreshTaskList()
+        return
+      }
 
       // 删除 post 时同步删除关联的 RAG 文档
       if (table === 'site_posts') {
@@ -411,6 +563,22 @@ export default function App() {
         ...prev,
         { input: '', output: `Deleted "${action._delete!.title}"` },
       ])
+      return
+    }
+    // Admin 编辑 Task
+    if (action._edit && isAdminRef.current && action._edit.table === 'tasks') {
+      const list = await fetchTasks(true)
+      const t = list.find((x) => x.id === action._edit!.id)
+      if (t) {
+        setShowTaskForm('edit')
+        setTaskEditId(t.id)
+        setTaskEditTitle(t.title)
+        setTaskEditNote(t.note)
+        setTaskEditPriority(t.priority)
+        setTaskEditDueDate(t.due_date || '')
+        setTaskEditRecurrence(t.recurrence || '')
+        setTaskEditInterval(t.recurrence_interval)
+      }
       return
     }
     // Admin 编辑 Invite
@@ -773,6 +941,80 @@ export default function App() {
       return
     }
 
+    // ==================== /tasks — 任务管理 ====================
+    if (lower === 'tasks') {
+      const subcmd = args[0]?.toLowerCase()
+
+      // /tasks history <title>
+      if (subcmd === 'history' && args.slice(1).length > 0) {
+        const q = args.slice(1).join(' ')
+        const history = await fetchTaskHistory(q)
+        if (!history.length) {
+          setHistory((prev) => [...prev, { input: cmd, output: `未找到 "${q}" 的完成记录。` }])
+          return
+        }
+        setHistory((prev) => [...prev, {
+          input: cmd,
+          output: `"${q}" 完成记录 (${history.length} 条):\n` + history.map(t =>
+            `  ${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '?'} ${t.completed_at ? '✅' : '❌'} ${t.note || t.title}`
+          ).join('\n'),
+        }])
+        return
+      }
+
+      // /tasks add
+      if (subcmd === 'add') {
+        setShowTaskForm('add')
+        setTaskEditId(null)
+        setTaskEditTitle('')
+        setTaskEditNote('')
+        setTaskEditPriority('medium')
+        setTaskEditDueDate('')
+        setTaskEditRecurrence('')
+        setTaskEditInterval(1)
+        return
+      }
+
+      // /tasks edit <id>
+      if (subcmd === 'edit' && args[1]) {
+        const list = await fetchTasks(true)
+        const t = list.find((x) => x.id === Number(args[1]))
+        if (!t) {
+          setHistory((prev) => [...prev, { input: cmd, output: `未找到任务 #${args[1]}` }])
+          return
+        }
+        setShowTaskForm('edit')
+        setTaskEditId(t.id)
+        setTaskEditTitle(t.title)
+        setTaskEditNote(t.note)
+        setTaskEditPriority(t.priority)
+        setTaskEditDueDate(t.due_date || '')
+        setTaskEditRecurrence(t.recurrence || '')
+        setTaskEditInterval(t.recurrence_interval)
+        return
+      }
+
+      // /tasks delete <id>
+      if (subcmd === 'delete' && args[1]) {
+        await deleteTaskApi(Number(args[1]))
+        setHistory((prev) => [...prev, { input: cmd, output: `任务 #${args[1]} 已删除。` }])
+        return
+      }
+
+      // /tasks 或 /tasks all
+      const tasks = await fetchTasks(true)
+      if (!tasks.length) {
+        setHistory((prev) => [...prev, { input: cmd, output: '暂无任务。\n使用 /tasks add 创建新任务。' }])
+        return
+      }
+      setHistory((prev) => [
+        ...prev,
+        { input: cmd, output: `共 ${tasks.length} 个任务` },
+        ...buildTaskGroups(tasks),
+      ])
+      return
+    }
+
     // ==================== 通用命令（about, posts）====================
     const handler = COMMANDS[lower]
     if (!handler) {
@@ -1107,7 +1349,7 @@ export default function App() {
         return
       }
 
-      if (adminSectionRef.current) return
+      if (adminSectionRef.current || showInviteFormRef.current || showTaskFormRef.current) return
 
       // Shift+Enter / Ctrl+Enter / Meta+Enter — 换行
       if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
@@ -1368,6 +1610,22 @@ export default function App() {
           onSaved={(message) => {
             setHistory((prev) => [...prev, { input: '', output: message }])
           }}
+        />
+      )}
+
+      {/* TaskForm */}
+      {showTaskForm && (
+        <TaskForm
+          mode={showTaskForm}
+          onClose={() => { setShowTaskForm(null); setTaskEditId(null) }}
+          onSaved={() => refreshTaskList()}
+          initialTitle={taskEditTitle}
+          initialNote={taskEditNote}
+          initialPriority={taskEditPriority}
+          initialDueDate={taskEditDueDate}
+          initialRecurrence={taskEditRecurrence}
+          initialInterval={taskEditInterval}
+          editId={taskEditId ?? undefined}
         />
       )}
 
